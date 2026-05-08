@@ -144,7 +144,8 @@ app.get(['/api/article', '/article'], async (req, res) => {
       }
     });
 
-    const reader = new Readability(document);
+    const documentClone = document.cloneNode(true);
+    const reader = new Readability(documentClone as Document);
     let article = reader.parse();
 
     // Fallback if Readability fails
@@ -210,6 +211,47 @@ app.get(['/api/article', '/article'], async (req, res) => {
         });
       }
       
+      // Check for Arc XP / Fusion global content (Chosun, etc. browser-side render)
+      if (!mainContent) {
+          const scripts = document.querySelectorAll('script');
+          for (const s of scripts) {
+            const content = s.textContent || '';
+            if (content.includes('Fusion.globalContent=')) {
+              try {
+                let jsonStr = content.split('Fusion.globalContent=')[1];
+                let endIdx = jsonStr.indexOf(';Fusion.');
+                if (endIdx === -1) {
+                  endIdx = jsonStr.indexOf(';');
+                }
+                if (endIdx !== -1) {
+                  jsonStr = jsonStr.substring(0, endIdx);
+                }
+                const fusionData = JSON.parse(jsonStr);
+                if (fusionData && fusionData.content_elements) {
+                  const elements: string[] = [];
+                  fusionData.content_elements.forEach((el: any) => {
+                    if (el.type === 'text') {
+                      elements.push(`<p>${el.content}</p>`);
+                    } else if (el.type === 'header') {
+                      elements.push(`<h2>${el.content}</h2>`);
+                    } else if (el.type === 'image' && el.url) {
+                      elements.push(`<img src="${el.url}" alt="${el.caption || ''}" />`);
+                    } else if (el.content && typeof el.content === 'string') {
+                      elements.push(`<p>${el.content}</p>`);
+                    }
+                  });
+                  if (elements.length > 0) {
+                    mainContent = elements.join('');
+                    break;
+                  }
+                }
+              } catch (e) {
+                console.error('Failed to parse Fusion JSON:', e);
+              }
+            }
+          }
+      }
+
       // Check for JSON-LD as a ultra-deep fallback
       if (!mainContent) {
           const scripts = document.querySelectorAll('script[type="application/ld+json"]');
