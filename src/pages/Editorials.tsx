@@ -156,7 +156,11 @@ export default function Editorials() {
           {articleDetail && articleDetail.content && (
             <div 
               className="prose prose-stone max-w-none text-[15px] leading-[1.8] font-serif text-[#333] [&>p]:mb-6 [&_img]:rounded-md [&_img]:my-6 [&_figure]:my-8 [&_figure_img]:mb-2 [&_figcaption]:mt-2 [&_figcaption]:mb-10 [&_figcaption]:text-[13px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-10 [&_em]:not-italic [&_em]:text-[13px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:mb-10 [&_a]:text-blue-600"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(articleDetail.content) }}
+              dangerouslySetInnerHTML={{ 
+                __html: DOMPurify.sanitize(articleDetail.content, {
+                  ADD_ATTR: ['referrerpolicy', 'loading', 'data-src', 'data-original', 'org-src', 'data-lazy-src', 'data-actual-src', 'data-alt-src', 'style']
+                }) 
+              }}
             />
           )}
         </article>
