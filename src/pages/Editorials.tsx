@@ -90,11 +90,15 @@ export default function Editorials() {
     
     try {
       const res = await fetch(`/api/article?url=${encodeURIComponent(article.link)}`);
-      if (!res.ok) throw new Error('Failed to load article');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || errorData?.details || 'Failed to load article');
+      }
       const data = await res.json();
       setArticleDetail(data);
-    } catch (err) {
-      setArticleError('본문을 불러오는 데 실패했습니다.');
+    } catch (err: any) {
+      console.error(err);
+      setArticleError(`본문을 불러오는 데 실패했습니다. (${err.message})`);
     } finally {
       setArticleLoading(false);
     }

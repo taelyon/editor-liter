@@ -15,9 +15,27 @@ app.get(['/api/article', '/article'], async (req, res) => {
 
     let targetUrl = url;
     if (url.includes('news.google.com')) {
-      const decoded = await decoder.decode(url);
-      if (decoded.status && decoded.decoded_url) {
+      // First try standard decoding
+      const decoded = await decoder.decode(url).catch(() => ({ status: false }));
+      if (decoded && decoded.status && decoded.decoded_url) {
         targetUrl = decoded.decoded_url;
+      } else {
+        // Fallback: extract base64 segment and decode url
+        const match = url.match(/\/articles\/([a-zA-Z0-9_\-\=]+)/);
+        if (match && match[1]) {
+          try {
+            const base64Str = match[1];
+            // Sometimes it's base64url, so replace - with + and _ with /
+            const normalizedBase64 = base64Str.replace(/-/g, '+').replace(/_/g, '/');
+            const decodedStr = Buffer.from(normalizedBase64, 'base64').toString('utf-8');
+            const extracted = decodedStr.match(/https?:\/\/[a-zA-Z0-9_\-\.\/\?\=\&\%]+/)?.[0];
+            if (extracted) {
+              targetUrl = extracted;
+            }
+          } catch (e) {
+            console.error('Fallback URL extract failed', e);
+          }
+        }
       }
     }
 
@@ -107,9 +125,9 @@ app.get(['/api/article', '/article'], async (req, res) => {
       byline: article.byline,
       originalUrl: targetUrl
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Article Fetch Error:', err);
-    res.status(500).json({ error: 'Failed to fetch article' });
+    res.status(500).json({ error: 'Failed to fetch article', details: err.message });
   }
 });
 
