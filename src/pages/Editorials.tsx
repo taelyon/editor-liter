@@ -24,6 +24,7 @@ export default function Editorials() {
   const [editorials, setEditorials] = useState<Editorial[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchFailed, setFetchFailed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   
   // Article viewing state
   const [selectedArticle, setSelectedArticle] = useState<Editorial | null>(null);
@@ -37,8 +38,11 @@ export default function Editorials() {
     const fetchEditorials = () => {
       setFetchFailed(false);
       fetch('/api/editorials')
-        .then(res => {
-          if (!res.ok) throw new Error('API failed');
+        .then(async res => {
+          if (!res.ok) {
+             const errData = await res.json().catch(() => null);
+             throw new Error(errData?.details || 'API failed');
+          }
           return res.json();
         })
         .then(data => {
@@ -50,6 +54,7 @@ export default function Editorials() {
           console.error("error fetching", err);
           setLoading(false);
           setFetchFailed(true);
+          setErrorMessage(err.message);
         });
     };
 
@@ -204,6 +209,7 @@ export default function Editorials() {
       ) : fetchFailed ? (
          <div className="text-center text-red-500 mt-20">
            데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+           {errorMessage && <p className="text-sm mt-2 opacity-70">Error: {errorMessage}</p>}
          </div>
       ) : (
          <div className="text-center text-gray-500 mt-20">
