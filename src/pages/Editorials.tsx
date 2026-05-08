@@ -23,6 +23,7 @@ interface ArticleDetail {
 export default function Editorials() {
   const [editorials, setEditorials] = useState<Editorial[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchFailed, setFetchFailed] = useState(false);
   
   // Article viewing state
   const [selectedArticle, setSelectedArticle] = useState<Editorial | null>(null);
@@ -34,8 +35,12 @@ export default function Editorials() {
 
   useEffect(() => {
     const fetchEditorials = () => {
+      setFetchFailed(false);
       fetch('/api/editorials')
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error('API failed');
+          return res.json();
+        })
         .then(data => {
           setEditorials(data);
           setLoading(false);
@@ -44,6 +49,7 @@ export default function Editorials() {
         .catch(err => {
           console.error("error fetching", err);
           setLoading(false);
+          setFetchFailed(true);
         });
     };
 
@@ -195,9 +201,13 @@ export default function Editorials() {
             </div>
           ))}
         </div>
+      ) : fetchFailed ? (
+         <div className="text-center text-red-500 mt-20">
+           데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+         </div>
       ) : (
          <div className="text-center text-gray-500 mt-20">
-           불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+           현재 등록된 사설이 없습니다.
          </div>
       )}
     </div>

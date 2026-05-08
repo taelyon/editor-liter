@@ -158,11 +158,10 @@ app.get('/api/editorials', async (req, res) => {
           const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
           const pubKst = new Date(new Date(item.pubDate || '').getTime() + 9 * 60 * 60 * 1000);
           
-          const isToday = nowKst.getUTCFullYear() === pubKst.getUTCFullYear() &&
-                          nowKst.getUTCMonth() === pubKst.getUTCMonth() &&
-                          nowKst.getUTCDate() === pubKst.getUTCDate();
+          // 최근 24시간 이내의 기사만 허용 (날짜가 바뀌더라도 최신 기사 표시)
+          const isRecent = nowKst.getTime() - pubKst.getTime() <= 24 * 60 * 60 * 1000;
           
-          return notExcluded && isCentral && isToday;
+          return notExcluded && isCentral && isRecent;
         })
         .map(item => {
         let publisher = item.source || '종합 일간지';
