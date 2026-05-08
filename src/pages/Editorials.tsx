@@ -25,6 +25,7 @@ export default function Editorials() {
   const [loading, setLoading] = useState(true);
   const [fetchFailed, setFetchFailed] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [readArticles, setReadArticles] = useState<Set<string>>(new Set());
   
   // Article viewing state
   const [selectedArticle, setSelectedArticle] = useState<Editorial | null>(null);
@@ -35,6 +36,16 @@ export default function Editorials() {
   const lastFetchTime = useRef<number>(Date.now());
 
   useEffect(() => {
+    // Load read articles from localStorage
+    const savedRead = localStorage.getItem('readEditorials');
+    if (savedRead) {
+      try {
+        setReadArticles(new Set(JSON.parse(savedRead)));
+      } catch (e) {
+        console.error('Failed to parse read articles', e);
+      }
+    }
+
     const fetchEditorials = () => {
       setFetchFailed(false);
       fetch('/api/editorials')
@@ -88,6 +99,14 @@ export default function Editorials() {
     setArticleError('');
     setArticleDetail(null);
     
+    // Mark as read
+    setReadArticles(prev => {
+      const next = new Set(prev);
+      next.add(article.link);
+      localStorage.setItem('readEditorials', JSON.stringify(Array.from(next)));
+      return next;
+    });
+    
     try {
       const res = await fetch(`/api/article?url=${encodeURIComponent(article.link)}`);
       if (!res.ok) {
@@ -132,7 +151,7 @@ export default function Editorials() {
               {articleDetail ? articleDetail.title : selectedArticle.title}
             </h1>
             <div className="text-sm text-gray-500 font-mono tracking-tighter">
-              {format(new Date(selectedArticle.pubDate), 'yyyy.MM.dd HH:mm')}
+              {format(new Date(selectedArticle.pubDate), 'yyyy-MM-dd HH:mm')}
             </div>
           </div>
 
@@ -212,13 +231,17 @@ export default function Editorials() {
                       {article.publisher}
                     </span>
                     <span className="text-xs text-gray-500 font-mono tracking-tighter">
-                      {format(new Date(article.pubDate), 'yyyy.MM.dd HH:mm')}
+                      {format(new Date(article.pubDate), 'yyyy-MM-dd HH:mm')}
                     </span>
                   </div>
-                  <h2 className="text-[17px] font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
+                  <h2 className={`text-[17px] font-serif leading-snug font-bold mb-3 transition-colors ${
+                    readArticles.has(article.link) ? 'text-gray-400' : 'text-[#1A1A1A]'
+                  }`}>
                     {article.title}
                   </h2>
-                  <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">
+                  <p className={`text-sm line-clamp-2 leading-relaxed transition-colors ${
+                    readArticles.has(article.link) ? 'text-gray-300' : 'text-gray-600'
+                  }`}>
                     {article.contentSnippet}
                   </p>
                 </div>

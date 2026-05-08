@@ -155,33 +155,46 @@ app.get(['/api/article', '/article'], async (req, res) => {
       
       // Look for common article containers in Korean news sites
       const selectors = [
-        'article', '.article_body', '#articleBody', '#articleBodyContents', 
+        'article', 'main', 'section[class*="article"]', 'div[class*="article"]',
+        '.article_body', '#articleBody', '#articleBodyContents', 
         '.article-body', '.view_con', '.news_body', '#news_body', 
         '.content_area', '#content_area', '[itemprop="articleBody"]',
         '.art_body', '.article_view', '.v_appp', '#article-body', '#article_body',
-        '.news_article', '.story-card', 'main', 'section.article-body',
+        '.news_article', '.story-card', 'section.article-body',
         '.article-content', '#article_content', '.par', '.article_txt', '.article_body',
-        'div.article_body'
+        'div.article_body', '.article-copy', '.art_txt', '.art_con', '.entry-content',
+        '.post-content', '.news-article', '#content', '#main-content'
       ];
       
       let mainContent = '';
+      let bestFallback = { content: '', score: 0 };
+      
       for (const selector of selectors) {
-        const el = document.querySelector(selector);
-        // Exclude headers, navs, footers from being chosen as main content
-        if (el && el.textContent && el.textContent.length > 300) {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(el => {
+          if (!el.textContent) return;
           const tagName = el.tagName.toLowerCase();
-          if (['nav', 'header', 'footer'].includes(tagName)) continue;
-          mainContent = el.innerHTML;
-          break;
-        }
+          if (['nav', 'header', 'footer', 'aside'].includes(tagName)) return;
+          
+          const textLen = el.textContent.trim().length;
+          const pCount = el.querySelectorAll('p').length;
+          const brCount = el.querySelectorAll('br').length;
+          const score = textLen + (pCount * 50) + (brCount * 20);
+          
+          if (score > bestFallback.score && textLen > 200) {
+            bestFallback = { content: el.innerHTML, score: score };
+          }
+        });
       }
       
-      // If still nothing, try largest div/section/main with significant text density
+      mainContent = bestFallback.content;
+      
+      // If still nothing, try largest div/section/main/article with significant text density
       if (!mainContent) {
         let maxScore = 0;
-        document.querySelectorAll('div, section, main').forEach(el => {
+        document.querySelectorAll('div, section, main, article').forEach(el => {
           // Skip utility elements
-          if (el.matches('header, footer, nav, aside, .sidebar, .comments')) return;
+          if (el.matches('header, footer, nav, aside, .sidebar, .comments, .ad-unit')) return;
 
           const pCount = el.querySelectorAll('p').length;
           const brCount = el.querySelectorAll('br').length;
