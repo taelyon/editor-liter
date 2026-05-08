@@ -185,41 +185,57 @@ export default function Editorials() {
             </div>
           ))}
         </div>
-      ) : editorials.length > 0 ? (
-        <div className="space-y-6">
-          {editorials.map(article => (
-            <div 
-              key={article.id} 
-              onClick={() => openArticle(article)}
-              className="block border-b border-[#EAE4DD] pb-6 last:border-0 hover:opacity-80 transition-opacity cursor-pointer"
-            >
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-[10px] px-2 py-0.5 bg-[#1A1A1A] text-white rounded font-bold">
-                  {article.publisher}
-                </span>
-                <span className="text-xs text-gray-500 font-mono tracking-tighter">
-                  {format(new Date(article.pubDate), 'yyyy.MM.dd HH:mm')}
-                </span>
-              </div>
-              <h2 className="text-[17px] font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
-                {article.title}
-              </h2>
-              <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">
-                {article.contentSnippet}
-              </p>
+      ) : (() => {
+        const today = new Date();
+        const filteredEditorials = editorials.filter(article => {
+          const articleDate = new Date(article.pubDate);
+          return articleDate.getFullYear() === today.getFullYear() &&
+                 articleDate.getMonth() === today.getMonth() &&
+                 articleDate.getDate() === today.getDate();
+        });
+        
+        if (filteredEditorials.length > 0) {
+          return (
+            <div className="space-y-6">
+              {filteredEditorials.map(article => (
+                <div 
+                  key={article.id} 
+                  onClick={() => openArticle(article)}
+                  className="block border-b border-[#EAE4DD] pb-6 last:border-0 hover:opacity-80 transition-opacity cursor-pointer"
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[10px] px-2 py-0.5 bg-[#1A1A1A] text-white rounded font-bold">
+                      {article.publisher}
+                    </span>
+                    <span className="text-xs text-gray-500 font-mono tracking-tighter">
+                      {format(new Date(article.pubDate), 'yyyy.MM.dd HH:mm')}
+                    </span>
+                  </div>
+                  <h2 className="text-[17px] font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
+                    {article.title}
+                  </h2>
+                  <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">
+                    {article.contentSnippet}
+                  </p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      ) : fetchFailed ? (
-         <div className="text-center text-red-500 mt-20">
-           데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
-           {errorMessage && <p className="text-sm mt-2 opacity-70">Error: {errorMessage}</p>}
-         </div>
-      ) : (
-         <div className="text-center text-gray-500 mt-20">
-           현재 등록된 사설이 없습니다.
-         </div>
-      )}
+          );
+        } else if (fetchFailed) {
+          return (
+            <div className="text-center text-red-500 mt-20">
+              데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+              {errorMessage && <p className="text-sm mt-2 opacity-70">Error: {errorMessage}</p>}
+            </div>
+          );
+        } else {
+          return (
+            <div className="text-center text-gray-500 mt-20">
+              현재 등록된 오늘의 사설이 없습니다.
+            </div>
+          );
+        }
+      })()}
     </div>
   );
 }
