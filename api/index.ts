@@ -147,12 +147,6 @@ app.get(['/api/article', '/article'], async (req, res) => {
     const reader = new Readability(document);
     let article = reader.parse();
 
-    // Specific Chosun Ilbo handling: Often Readability parses it incorrectly if it's an editorial
-    if (targetUrl.includes('chosun.com')) {
-      console.log('Chosun Ilbo detected, prioritizing custom extraction');
-      article = null; // Forces fallback
-    }
-
     // Fallback if Readability fails
     if (!article) {
       console.log('Readability failed, attempting fallback for:', targetUrl);
@@ -241,7 +235,8 @@ app.get(['/api/article', '/article'], async (req, res) => {
           excerpt: '',
           siteName: '',
           dir: 'ltr',
-          lang: 'ko'
+          lang: 'ko',
+          publishedTime: ''
         };
       }
     }
