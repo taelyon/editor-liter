@@ -90,7 +90,7 @@ app.get(['/api/article', '/article'], async (req, res) => {
        html = iconv.decode(buffer, 'cp949');
     }
 
-    const doc = new JSDOM(html, { url: targetUrl, runScripts: 'dangerously' });
+    const doc = new JSDOM(html, { url: targetUrl });
     const document = doc.window.document;
 
     // Fix images BEFORE Readability: swap lazy loading attributes
@@ -150,11 +150,6 @@ app.get(['/api/article', '/article'], async (req, res) => {
     // Fallback if Readability fails
     if (!article) {
       console.log('Readability failed, attempting fallback for:', targetUrl);
-      
-      // DEBUG: Log a sample of the document structure if Readability fails
-      const bodyElements = Array.from(document.querySelectorAll('body *'));
-      const sampleTags = bodyElements.slice(0, 50).map(el => el.tagName).join(', ');
-      console.log('DEBUG: Document body sample tags:', sampleTags);
       
       const title = document.title || document.querySelector('h1')?.textContent || '제목 없음';
       
@@ -238,23 +233,17 @@ app.get(['/api/article', '/article'], async (req, res) => {
           lang: 'ko',
           publishedTime: ''
         };
+      } else {
+        console.error('Custom fallback also failed to extract significant content for:', targetUrl);
       }
     }
 
     if (!article) {
       console.error('Final parse failure for:', targetUrl);
-      const title = document.title;
-      const bodyText = document.body.textContent || '';
-      console.log('DEBUG: Document title:', title);
-      console.log('DEBUG: Document body text length:', bodyText.length);
-      console.log('DEBUG: Document body snippet:', bodyText.substring(0, 500));
-      
-      const bodyElements = Array.from(document.querySelectorAll('body *'));
-      const sampleTags = bodyElements.slice(0, 50).map(el => el.tagName).join(', ');
       
       return res.status(404).json({ 
         error: 'Could not parse article', 
-        details: `Readability and custom fallbacks failed. Title: ${title}, Body text length: ${bodyText.length}, Sample tags: ${sampleTags}`,
+        details: `Readability and custom fallbacks failed.`,
         snippet: html.substring(0, 500)
       });
     }
