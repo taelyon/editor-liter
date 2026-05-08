@@ -1,0 +1,15 @@
+{
+  "short_name": "사설과고전",
+  "name": "사설과 고전 - 내 손안의 지식",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#EAE4DD",
+  "background_color": "#ffffff"
+}

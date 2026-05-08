@@ -1,0 +1,205 @@
+import { useState, useEffect, useRef } from 'react';
+import { format } from 'date-fns';
+import { ko } from 'date-fns/locale';
+import DOMPurify from 'dompurify';
+import { ArrowLeft, ExternalLink } from 'lucide-react';
+
+interface Editorial {
+  id: string;
+  publisher: string;
+  title: string;
+  link: string;
+  pubDate: string;
+  contentSnippet: string;
+}
+
+interface ArticleDetail {
+  title: string;
+  content: string;
+  byline: string;
+  originalUrl: string;
+}
+
+export default function Editorials() {
+  const [editorials, setEditorials] = useState<Editorial[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Article viewing state
+  const [selectedArticle, setSelectedArticle] = useState<Editorial | null>(null);
+  const [articleDetail, setArticleDetail] = useState<ArticleDetail | null>(null);
+  const [articleLoading, setArticleLoading] = useState(false);
+  const [articleError, setArticleError] = useState('');
+  
+  const lastFetchTime = useRef<number>(Date.now());
+
+  useEffect(() => {
+    const fetchEditorials = () => {
+      fetch('/api/editorials')
+        .then(res => res.json())
+        .then(data => {
+          setEditorials(data);
+          setLoading(false);
+          lastFetchTime.current = Date.now();
+        })
+        .catch(err => {
+          console.error("error fetching", err);
+          setLoading(false);
+        });
+    };
+
+    fetchEditorials();
+
+    // 1시간(60분 * 60초 * 1000밀리초) 주기로 자동 갱신
+    const interval = setInterval(fetchEditorials, 60 * 60 * 1000);
+
+    // 모바일 등에서 화면이 켜지거나(잠금 해제) 앱/탭으로 돌아왔을 때 확인
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        // 마지막 업데이트 이후 1시간(또는 일정 시간)이 지났으면 즉시 갱신
+        if (now - lastFetchTime.current >= 60 * 60 * 1000) {
+          fetchEditorials();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  const openArticle = async (article: Editorial) => {
+    setSelectedArticle(article);
+    setArticleLoading(true);
+    setArticleError('');
+    setArticleDetail(null);
+    
+    try {
+      const res = await fetch(`/api/article?url=${encodeURIComponent(article.link)}`);
+      if (!res.ok) throw new Error('Failed to load article');
+      const data = await res.json();
+      setArticleDetail(data);
+    } catch (err) {
+      setArticleError('본문을 불러오는 데 실패했습니다.');
+    } finally {
+      setArticleLoading(false);
+    }
+  };
+
+  const closeArticle = () => {
+    setSelectedArticle(null);
+    setArticleDetail(null);
+  };
+
+  if (selectedArticle) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#FCFAF7] overflow-y-auto w-full h-full pb-24">
+        <header className="sticky top-0 bg-[#FCFAF7]/90 backdrop-blur-sm border-b border-[#EAE4DD] p-4 flex items-center justify-between z-10 w-full mb-6 text-[#1A1A1A]">
+          <button onClick={closeArticle} className="p-2 -ml-2 rounded-full hover:bg-black/5" aria-label="Go back">
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+          <div className="text-sm font-bold truncate mx-4 flex-1 text-center">
+            {selectedArticle.publisher}
+          </div>
+          {articleDetail?.originalUrl ? (
+             <a href={articleDetail.originalUrl} target="_blank" rel="noopener noreferrer" className="p-2 -mr-2 rounded-full hover:bg-black/5" aria-label="Open original">
+              <ExternalLink className="w-5 h-5" />
+             </a>
+          ) : <div className="w-9" />}
+        </header>
+
+        <article className="px-4 max-w-2xl lg:max-w-4xl mx-auto">
+          <div className="border-b border-[#EAE4DD] pb-6 mb-6 mt-4">
+            <h1 className="text-2xl font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
+              {articleDetail ? articleDetail.title : selectedArticle.title}
+            </h1>
+            <div className="text-sm text-gray-500 font-mono tracking-tighter">
+              {format(new Date(selectedArticle.pubDate), 'yyyy.MM.dd HH:mm')}
+            </div>
+          </div>
+
+          {articleLoading && (
+            <div className="space-y-4 animate-pulse">
+              <div className="h-4 bg-[#F5F1ED] rounded w-full"></div>
+              <div className="h-4 bg-[#F5F1ED] rounded w-11/12"></div>
+              <div className="h-4 bg-[#F5F1ED] rounded w-full"></div>
+              <div className="h-4 bg-[#F5F1ED] rounded w-5/6"></div>
+              <div className="h-4 bg-[#F5F1ED] rounded w-full"></div>
+            </div>
+          )}
+
+          {articleError && (
+            <div className="text-center py-10">
+              <p className="text-red-500 mb-4">{articleError}</p>
+              <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer" className="inline-block px-4 py-2 bg-[#1A1A1A] text-white rounded font-medium">원문 사이트에서 보기</a>
+            </div>
+          )}
+
+          {articleDetail && articleDetail.content && (
+            <div 
+              className="prose prose-stone max-w-none text-[15px] leading-[1.8] font-serif text-[#333] [&>p]:mb-6 [&>img]:rounded-md [&>img]:my-6 [&_a]:text-blue-600"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(articleDetail.content) }}
+            />
+          )}
+        </article>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen">
+      <header className="mb-6 flex items-center justify-between border-b border-[#EAE4DD] pb-6">
+        <div>
+          <h1 className="text-2xl font-serif font-bold tracking-tight text-[#1A1A1A]">오늘의 사설</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {format(new Date(), 'yyyy년 M월 d일 eeee', { locale: ko })}
+          </p>
+        </div>
+      </header>
+
+      {loading ? (
+        <div className="space-y-6">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="animate-pulse border-b border-[#EAE4DD] pb-6">
+              <div className="h-4 bg-[#F5F1ED] rounded w-1/4 mb-3"></div>
+              <div className="h-6 bg-[#F5F1ED] rounded w-3/4 mb-4"></div>
+              <div className="h-12 bg-[#F5F1ED] rounded w-full"></div>
+            </div>
+          ))}
+        </div>
+      ) : editorials.length > 0 ? (
+        <div className="space-y-6">
+          {editorials.map(article => (
+            <div 
+              key={article.id} 
+              onClick={() => openArticle(article)}
+              className="block border-b border-[#EAE4DD] pb-6 last:border-0 hover:opacity-80 transition-opacity cursor-pointer"
+            >
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-[10px] px-2 py-0.5 bg-[#1A1A1A] text-white rounded font-bold">
+                  {article.publisher}
+                </span>
+                <span className="text-xs text-gray-500 font-mono tracking-tighter">
+                  {format(new Date(article.pubDate), 'yyyy.MM.dd HH:mm')}
+                </span>
+              </div>
+              <h2 className="text-[17px] font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
+                {article.title}
+              </h2>
+              <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">
+                {article.contentSnippet}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+         <div className="text-center text-gray-500 mt-20">
+           불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+         </div>
+      )}
+    </div>
+  );
+}
