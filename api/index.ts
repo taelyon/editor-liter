@@ -731,7 +731,12 @@ app.get(['/api/classics', '/classics'], async (req, res) => {
     // Fallback if no API Key or Gemini fails
     throw new Error('Gemini API Error or No API Key');
   } catch (error: any) {
-    console.error('Classics Fetch Error:', error);
+    const isApiKeyError = error.message?.includes('API key') || error.message?.includes('API_KEY_INVALID') || error.message?.includes('Gemini API Error or No API Key');
+    if (isApiKeyError) {
+      console.log('Classics Fetch: Fallback to static data (Gemini API Key missing or invalid).');
+    } else {
+      console.error('Classics Fetch Error:', error.message);
+    }
     if (cachedClassics) {
       return res.json(cachedClassics);
     }
