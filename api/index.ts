@@ -5,7 +5,7 @@ import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import iconv from 'iconv-lite';
 import { GoogleGenAI } from '@google/genai';
-import { classicsData as fallbackClassicsData } from '../src/data/classics';
+import { classicsData as fallbackClassicsData } from './classicsData';
 
 const app = express();
 
