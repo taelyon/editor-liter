@@ -50,8 +50,8 @@ export default function Settings() {
     <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen">
       <header className="mb-6 flex items-center justify-between border-b border-[#EAE4DD] pb-6">
         <div>
-          <h1 className="text-2xl font-serif font-bold tracking-tight text-[#1A1A1A]">구독 설정</h1>
-          <p className="text-sm text-gray-500 mt-1">알림을 통해 매일 지식을 채워보세요.</p>
+          <h1 className="text-3xl font-serif font-bold tracking-tight text-[#1A1A1A]">구독 설정</h1>
+          <p className="text-base text-gray-500 mt-1">알림을 통해 매일 지식을 채워보세요.</p>
         </div>
       </header>
 
@@ -62,8 +62,8 @@ export default function Settings() {
               <BellRing className="w-5 h-5 text-[#4A90E2]" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-[#1A1A1A]">사설 및 고전 알림</h2>
-              <p className="text-xs text-gray-500 mt-1">업데이트 될 때 기기로 알림을 받습니다.</p>
+              <h2 className="text-base font-bold text-[#1A1A1A]">사설 및 고전 알림</h2>
+              <p className="text-sm text-gray-500 mt-1">업데이트 될 때 기기로 알림을 받습니다.</p>
             </div>
           </div>
           <button
@@ -81,13 +81,13 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="mt-6 text-xs text-gray-400 text-center">
+      <div className="mt-6 text-sm text-gray-400 text-center">
         PWA 알림(Push Notification)은 모바일 브라우저 환경에 따라 지원이 제한될 수 있습니다.<br/>
         iOS는 '홈 화면에 추가' 후 설정에서 허용해야 합니다.
       </div>
 
       {showToast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-4 py-2 rounded-full text-sm flex items-center gap-2 shadow-lg animate-fade-in-down z-50">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-4 py-2 rounded-full text-base flex items-center gap-2 shadow-lg animate-fade-in-down z-50">
           <Check className="w-4 h-4" />
           {isSubscribed ? '알림이 설정되었습니다.' : '알림이 해제되었습니다.'}
         </div>

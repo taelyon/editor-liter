@@ -103,7 +103,11 @@ app.get(['/api/article', '/article'], async (req, res) => {
       'div:has(> p > span > img[alt="마이에이전트"])', // MK MAI Agent
       'ul:has(> li[data-video-url])', // MK Shorts video list
       // Also MK Shorts header if any
-      'h3:has(> img[alt="MK_Shorts"])'
+      'h3:has(> img[alt="MK_Shorts"])',
+      // HanKyoReh Elements
+      'div[class*="AudioPlayer"]', // Audio player
+      'div[class*="BaseAd"]', // Advertisement
+      'div[class*="adWrap"]' // Advertisement wrapper
     ];
 
     removeSelectors.forEach(selector => {
@@ -121,13 +125,17 @@ app.get(['/api/article', '/article'], async (req, res) => {
         el.remove();
       }
     });
+    
+    document.querySelectorAll('audio, video').forEach(el => el.remove());
 
     // MK Member Login barrier text cleanup
-    document.querySelectorAll('div, p').forEach(el => {
-       const text = el.textContent || '';
+    document.querySelectorAll('div, p, span, strong, em').forEach(el => {
+       const text = el.textContent?.trim() || '';
        if (text.includes('매일경제 회원전용') && text.includes('서비스 입니다')) {
           el.remove();
        } else if (text.includes('기존 회원은 로그인 해주시고') || text.includes('무료 회원 가입')) {
+          el.remove();
+       } else if (text === '기사를 읽어드립니다' || text === '0:00' || text === '광고') {
           el.remove();
        }
     });

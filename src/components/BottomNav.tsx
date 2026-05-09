@@ -22,7 +22,7 @@ export default function BottomNav() {
               )}
             >
               <item.icon className="w-6 h-6 mb-1" />
-              <span className="text-[10px] font-medium">{item.name}</span>
+              <span className="text-xs font-medium">{item.name}</span>
             </NavLink>
           </li>
         ))}

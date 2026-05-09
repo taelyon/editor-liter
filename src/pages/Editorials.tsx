@@ -135,7 +135,7 @@ export default function Editorials() {
           <button onClick={closeArticle} className="p-2 -ml-2 rounded-full hover:bg-black/5" aria-label="Go back">
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <div className="text-sm font-bold truncate mx-4 flex-1 text-center">
+          <div className="text-base font-bold truncate mx-4 flex-1 text-center">
             {selectedArticle.publisher}
           </div>
           {articleDetail?.originalUrl ? (
@@ -147,10 +147,10 @@ export default function Editorials() {
 
         <article className="px-4 max-w-2xl lg:max-w-4xl mx-auto">
           <div className="border-b border-[#EAE4DD] pb-6 mb-6 mt-4">
-            <h1 className="text-2xl font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
+            <h1 className="text-3xl font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
               {articleDetail ? articleDetail.title : selectedArticle.title}
             </h1>
-            <div className="text-sm text-gray-500 font-mono tracking-tighter">
+            <div className="text-base text-gray-500 font-mono tracking-tighter">
               {format(new Date(selectedArticle.pubDate), 'yyyy-MM-dd HH:mm')}
             </div>
           </div>
@@ -174,7 +174,7 @@ export default function Editorials() {
 
           {articleDetail && articleDetail.content && (
             <div 
-              className="prose prose-stone max-w-none text-[15px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_img]:rounded-md [&_img]:my-6 [&_figure]:my-8 [&_figure_img]:mb-2 [&_figcaption]:mt-2 [&_figcaption]:mb-10 [&_figcaption]:text-[13px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-10 [&_em]:not-italic [&_em]:text-[13px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:mb-10 [&_div:has(>picture)]:my-10 [&_div:has(>picture)>p:last-child]:!mb-0 [&_div:has(>picture)>p:last-child]:text-[13px] [&_div:has(>picture)>p:last-child]:text-gray-500 [&_div:has(>picture)>p:last-child]:leading-snug [&_div:has(>img)]:my-10 [&_div:has(>img)>p:last-child]:!mb-0 [&_div:has(>img)>p:last-child]:text-[13px] [&_div:has(>img)>p:last-child]:text-gray-500 [&_div:has(>img)>p:last-child]:leading-snug [&_a]:text-blue-600"
+              className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_img]:rounded-md [&_img]:my-6 [&_figure]:my-8 [&_figure_img]:mb-2 [&_figcaption]:mt-2 [&_figcaption]:mb-10 [&_figcaption]:text-[15px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-10 [&_em]:not-italic [&_em]:text-[15px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:mb-10 [&_div:has(>picture)]:my-10 [&_div:has(>picture)>p:last-child]:!mb-0 [&_div:has(>picture)>p:last-child]:text-[15px] [&_div:has(>picture)>p:last-child]:text-gray-500 [&_div:has(>picture)>p:last-child]:leading-snug [&_div:has(>img)]:my-10 [&_div:has(>img)>p:last-child]:!mb-0 [&_div:has(>img)>p:last-child]:text-[15px] [&_div:has(>img)>p:last-child]:text-gray-500 [&_div:has(>img)>p:last-child]:leading-snug [&_a]:text-blue-600"
               dangerouslySetInnerHTML={{ 
                 __html: DOMPurify.sanitize(articleDetail.content, {
                   ADD_ATTR: ['referrerpolicy', 'loading', 'data-src', 'data-original', 'org-src', 'data-lazy-src', 'data-actual-src', 'data-alt-src', 'style']
@@ -191,8 +191,8 @@ export default function Editorials() {
     <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen">
       <header className="mb-6 flex items-center justify-between border-b border-[#EAE4DD] pb-6">
         <div>
-          <h1 className="text-2xl font-serif font-bold tracking-tight text-[#1A1A1A]">오늘의 사설</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-3xl font-serif font-bold tracking-tight text-[#1A1A1A]">오늘의 사설</h1>
+          <p className="text-base text-gray-500 mt-1">
             {format(new Date(), 'yyyy년 M월 d일 eeee', { locale: ko })}
           </p>
         </div>
@@ -227,19 +227,19 @@ export default function Editorials() {
                   className="block border-b border-[#EAE4DD] pb-6 last:border-0 hover:opacity-80 transition-opacity cursor-pointer"
                 >
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] px-2 py-0.5 bg-[#1A1A1A] text-white rounded font-bold">
+                    <span className="text-xs px-2 py-0.5 bg-[#1A1A1A] text-white rounded font-bold">
                       {article.publisher}
                     </span>
-                    <span className="text-xs text-gray-500 font-mono tracking-tighter">
+                    <span className="text-sm text-gray-500 font-mono tracking-tighter">
                       {format(new Date(article.pubDate), 'yyyy-MM-dd HH:mm')}
                     </span>
                   </div>
-                  <h2 className={`text-[17px] font-serif leading-snug font-bold mb-3 transition-colors ${
+                  <h2 className={`text-xl font-serif leading-snug font-bold mb-3 transition-colors ${
                     readArticles.has(article.link) ? 'text-gray-400' : 'text-[#1A1A1A]'
                   }`}>
                     {article.title}
                   </h2>
-                  <p className={`text-sm line-clamp-2 leading-relaxed transition-colors ${
+                  <p className={`text-base line-clamp-2 leading-relaxed transition-colors ${
                     readArticles.has(article.link) ? 'text-gray-300' : 'text-gray-600'
                   }`}>
                     {article.contentSnippet}
