@@ -712,7 +712,7 @@ app.get(['/api/classics', '/classics'], async (req, res) => {
           }
       });
 
-      const text = response.text();
+      const text = response.text;
       if (text) {
           const parsed = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
           if (Array.isArray(parsed) && parsed.length > 0) {
