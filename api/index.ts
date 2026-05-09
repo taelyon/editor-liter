@@ -93,6 +93,52 @@ app.get(['/api/article', '/article'], async (req, res) => {
     const doc = new JSDOM(html, { url: targetUrl });
     const document = doc.window.document;
 
+    // Clean up unwanted DOM elements before Readability parsing
+    const removeSelectors = [
+      '[data-layer-type="keypoint"]', // MK AI summary
+      '[data-layer-type="commentary"]', // MK AI insight
+      '[data-hide-in-app=""]', // MK MAI agent floating banner
+      '.news_read_end', // Chosun end of article
+      'div:has(> p > a[href*="mai.mk.co.kr"])', // MK MAI Agent fallback
+      'div:has(> p > span > img[alt="마이에이전트"])', // MK MAI Agent
+      'ul:has(> li[data-video-url])', // MK Shorts video list
+      // Also MK Shorts header if any
+      'h3:has(> img[alt="MK_Shorts"])'
+    ];
+
+    removeSelectors.forEach(selector => {
+      try {
+        const els = document.querySelectorAll(selector);
+        els.forEach(el => el.remove());
+      } catch (e) {
+        // Ignore invalid selectors
+      }
+    });
+
+    // Also remove MK "Shorts" text if it's there
+    document.querySelectorAll('h3, h4, h2').forEach(el => {
+      if (el.textContent?.trim() === 'Shorts' || el.textContent?.trim() === 'MK_Shorts') {
+        el.remove();
+      }
+    });
+
+    // MK Member Login barrier text cleanup
+    document.querySelectorAll('div, p').forEach(el => {
+       const text = el.textContent || '';
+       if (text.includes('매일경제 회원전용') && text.includes('서비스 입니다')) {
+          el.remove();
+       } else if (text.includes('기존 회원은 로그인 해주시고') || text.includes('무료 회원 가입')) {
+          el.remove();
+       }
+    });
+
+    // If there is an itemprop="articleBody", let's move it to standard <article> to help Readability
+    let preExtractedBody = '';
+    const articleBody = document.querySelector('[itemprop="articleBody"]');
+    if (articleBody) {
+      preExtractedBody = articleBody.innerHTML;
+    }
+
     // Fix images BEFORE Readability: swap lazy loading attributes
     document.querySelectorAll('img, [data-src], [data-original], [org-src]').forEach(el => {
       const img = el as HTMLImageElement;
@@ -144,6 +190,9 @@ app.get(['/api/article', '/article'], async (req, res) => {
       }
     });
 
+    // Strip out hamburger menu and nav elements that Readability might accidentally parse
+    document.querySelectorAll('nav, header, footer, .hamburger, [data-section*="hamburger"]').forEach(el => el.remove());
+
     // Check for Arc XP / Fusion global content (Chosun, etc. browser-side render)
     // Inject it into DOM before Readability parsing
     const scripts = document.querySelectorAll('script');
@@ -182,8 +231,21 @@ app.get(['/api/article', '/article'], async (req, res) => {
     }
 
     const documentClone = document.cloneNode(true);
-    const reader = new Readability(documentClone as Document);
-    let article = reader.parse();
+    let article: any = null;
+    
+    // First try the pre-extracted structured body
+    if (preExtractedBody && preExtractedBody.length > 200) {
+       article = {
+         title: document.title || document.querySelector('h1')?.textContent || '제목 없음',
+         content: preExtractedBody,
+         textContent: preExtractedBody.replace(/<[^>]+>/g, ''), // rough text content
+         byline: '',
+         length: preExtractedBody.length,
+       };
+    } else {
+      const reader = new Readability(documentClone as Document);
+      article = reader.parse();
+    }
 
     // Fallback if Readability fails
     if (!article) {
@@ -419,6 +481,7 @@ app.get(['/api/article', '/article'], async (req, res) => {
     
     for (let i = 0; i < 3; i++) {
       cleanDocument.querySelectorAll('*').forEach(el => {
+        if (el.tagName === 'BODY' || el.tagName === 'HTML' || el.tagName === 'HEAD') return;
         if (el.children.length === 0 && (!el.textContent || el.textContent.trim() === '') && !['IMG', 'BR', 'HR', 'IFRAME', 'VIDEO'].includes(el.tagName)) {
           el.remove();
         }
@@ -427,7 +490,7 @@ app.get(['/api/article', '/article'], async (req, res) => {
 
     res.json({
       title: article.title,
-      content: cleanDocument.body.innerHTML,
+      content: cleanDocument.body?.innerHTML || article.content,
       textContent: article.textContent,
       byline: article.byline,
       originalUrl: targetUrl
@@ -441,74 +504,158 @@ app.get(['/api/article', '/article'], async (req, res) => {
 app.get(['/api/editorials', '/editorials'], async (req, res) => {
   try {
     let allItems: any[] = [];
-    const url = 'https://news.google.com/rss/search?q=intitle:%22%EC%82%AC%EC%84%A4%22+when:1d&hl=ko&gl=KR&ceid=KR:ko';
     
-    try {
-      const fetchedInfo = await parser.parseURL(url);
-      
-      const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'naver.com', 'msn.com', 'zum.com', '네이트', '다음', '네이버', '연합뉴스', '뉴시스', '뉴스1'];
+    const centralMedia = [
+      '조선일보', '중앙일보', '동아일보', '한겨레', '경향신문', 
+      '한국일보', '서울신문', '세계일보', '국민일보', '문화일보', 
+      '매일경제', '한국경제', '서울경제', '헤럴드경제', '아시아경제', 
+      '파이낸셜뉴스', '머니투데이', '이데일리', '전자신문', '디지털타임스',
+      'KBS', 'MBC', 'SBS', 'YTN', 'JTBC', 'MBN', 'TV조선', '채널A',
+      '오마이뉴스', '노컷뉴스', '프레시안', '미디어오늘', '기자협회보'
+    ];
+    
+    // Direct feeds using regex to avoid XML parsing errors
+    const directFeeds = [
+      { publisher: '조선일보', url: 'https://www.chosun.com/arc/outboundfeeds/rss/category/opinion/?outputType=xml' },
+      { publisher: '한겨레', url: 'https://www.hani.co.kr/rss/opinion/' },
+      { publisher: '매일경제', url: 'https://www.mk.co.kr/rss/30200030/' },
+      { publisher: 'SBS', url: 'https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=14' }
+    ];
 
-      const centralMedia = [
-        '조선일보', '중앙일보', '동아일보', '한겨레', '경향신문', 
-        '한국일보', '서울신문', '세계일보', '국민일보', '문화일보', 
-        '매일경제', '한국경제', '서울경제', '헤럴드경제', '아시아경제', 
-        '파이낸셜뉴스', '머니투데이', '이데일리', '전자신문', '디지털타임스',
-        'KBS', 'MBC', 'SBS', 'YTN', 'JTBC', 'MBN', 'TV조선', '채널A',
-        '오마이뉴스', '노컷뉴스', '프레시안', '미디어오늘', '기자협회보'
-      ];
-
-      allItems = fetchedInfo.items
-        .filter(item => {
-          const source = (item.source || '').toLowerCase();
-          const notExcluded = !excludedSources.some(excluded => source.includes(excluded.toLowerCase()));
-          const isCentral = centralMedia.some(media => source.includes(media));
-          
-          const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
-          const pubKst = new Date(new Date(item.pubDate || '').getTime() + 9 * 60 * 60 * 1000);
-          
-          // 최근 24시간 이내의 기사만 허용 (날짜가 바뀌더라도 최신 기사 표시)
-          const isRecent = nowKst.getTime() - pubKst.getTime() <= 24 * 60 * 60 * 1000;
-          
-          return notExcluded && isCentral && isRecent;
-        })
-        .map(item => {
-        let publisher = item.source || '종합 일간지';
-        let title = item.title || '';
+    const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+    
+    for (const f of directFeeds) {
+      try {
+        const response = await fetch(f.url, {
+           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+           signal: AbortSignal.timeout(5000)
+        });
+        const buffer = await response.arrayBuffer();
         
-        if (item.source && title.endsWith(` - ${item.source}`)) {
-            title = title.substring(0, title.lastIndexOf(` - ${item.source}`)).trim();
+        let text = iconv.decode(Buffer.from(buffer), 'utf-8');
+        if (text.includes('euc-kr') || text.includes('EUC-KR')) {
+           text = iconv.decode(Buffer.from(buffer), 'euc-kr');
         }
         
-        let snippet = item.contentSnippet || item.content || item.description || '';
-        snippet = snippet.replace(/<[^>]+>/g, '').trim();
-        
-        if (snippet.includes(title) || snippet.includes(item.title)) {
-          snippet = '';
+        let match;
+        while ((match = itemRegex.exec(text)) !== null) {
+           const itemXml = match[1];
+           const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
+           const linkMatch = itemXml.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || itemXml.match(/<link>([\s\S]*?)<\/link>/i);
+           const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+           let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
+           if (!descMatch) descMatch = itemXml.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i) || itemXml.match(/<content:encoded>([\s\S]*?)<\/content:encoded>/i);
+           
+           const title = titleMatch ? titleMatch[1].trim() : '';
+           const link = linkMatch ? linkMatch[1].trim() : '';
+           const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toUTCString();
+           let description = descMatch ? descMatch[1].trim() : '';
+           description = description.replace(/<[^>]+>/g, '').trim();
+           
+           if (title.includes('사설')) {
+               allItems.push({
+                   id: link,
+                   publisher: f.publisher,
+                   title,
+                   link,
+                   pubDate,
+                   contentSnippet: description.length > 200 ? description.substring(0, 200) + '...' : description,
+                   mediaType: centralMedia.includes(f.publisher) ? 'central' : 'local'
+               });
+           }
         }
-        else if (snippet.length > 200) {
-          snippet = snippet.substring(0, 200) + '...';
-        }
-
-        const isCentral = centralMedia.some(media => publisher.includes(media));
-        
-        return {
-          id: item.guid || item.link,
-          publisher: publisher,
-          title: title,
-          link: item.link,
-          pubDate: item.pubDate,
-          contentSnippet: snippet,
-          mediaType: isCentral ? 'central' : 'local'
-        };
-      });
-    } catch (feedError) {
-      console.error(`Failed to fetch RSS:`, feedError);
+      } catch (err) {
+        console.error(`Failed to fetch direct RSS from ${f.publisher}:`, err);
+      }
     }
+
+    // Bing News Fallback
+    try {
+      const bingUrl = 'https://www.bing.com/news/search?q=%22%EC%82%AC%EC%84%A4%22&cc=kr&format=rss';
+      const bingResponse = await fetch(bingUrl, {
+         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+         signal: AbortSignal.timeout(5000)
+      });
+      const text = await bingResponse.text();
+      
+      let match;
+      while ((match = itemRegex.exec(text)) !== null) {
+         const itemXml = match[1];
+         const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
+         const linkMatch = itemXml.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || itemXml.match(/<link>([\s\S]*?)<\/link>/i);
+         const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+         let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
+         
+         let title = titleMatch ? titleMatch[1].trim() : '';
+         let trackingLink = linkMatch ? linkMatch[1].trim() : '';
+         const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toUTCString();
+         let description = descMatch ? descMatch[1].trim() : '';
+         description = description.replace(/<[^>]+>/g, '').trim();
+         
+         // Extract real url from bing tracking link
+         let link = trackingLink;
+         try {
+             const urlObj = new URL(trackingLink);
+             const target = urlObj.searchParams.get('url');
+             if (target) {
+                 link = target;
+             }
+         } catch(e) {}
+         
+         // Try to deduce publisher from link
+         let publisher = '종합 일간지';
+         if (link.includes('chosun.com')) publisher = '조선일보';
+         else if (link.includes('hani.co.kr')) publisher = '한겨레';
+         else if (link.includes('khan.co.kr')) publisher = '경향신문';
+         else if (link.includes('donga.com')) publisher = '동아일보';
+         else if (link.includes('joins.com') || link.includes('joongang.co.kr')) publisher = '중앙일보';
+         else if (link.includes('hankyung.com')) publisher = '한국경제';
+         else if (link.includes('mk.co.kr')) publisher = '매일경제';
+         else if (link.includes('sedaily.com')) publisher = '서울경제';
+         else if (link.includes('hankookilbo.com')) publisher = '한국일보';
+         else if (link.includes('seoul.co.kr')) publisher = '서울신문';
+         else if (link.includes('segye.com')) publisher = '세계일보';
+         else if (link.includes('kmib.co.kr')) publisher = '국민일보';
+         else if (link.includes('munhwa.com')) publisher = '문화일보';
+         else if (link.includes('fnnews.com')) publisher = '파이낸셜뉴스';
+         else if (link.includes('mt.co.kr')) publisher = '머니투데이';
+         else if (link.includes('edaily.co.kr')) publisher = '이데일리';
+         else if (link.includes('asiae.co.kr')) publisher = '아시아경제';
+
+         if (title.includes('사설') && !allItems.some(item => item.link === link || item.title === title)) {
+             allItems.push({
+                 id: link,
+                 publisher,
+                 title,
+                 link,
+                 pubDate,
+                 contentSnippet: description.length > 200 ? description.substring(0, 200) + '...' : description,
+                 mediaType: centralMedia.includes(publisher) ? 'central' : 'local'
+             });
+         }
+      }
+    } catch (err) {
+      console.error('Failed to fetch Bing News RSS:', err);
+    }
+
+    const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+    
+    // Filter out old news (older than 24-36h depending on needs) and excluded sources
+    const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'naver.com', 'msn.com', 'zum.com'];
+    
+    allItems = allItems.filter(item => {
+      const source = (item.publisher || '').toLowerCase();
+      const notExcluded = !excludedSources.some(excluded => item.link.includes(excluded) || source.includes(excluded));
+      const pubKst = new Date(new Date(item.pubDate || '').getTime() + 9 * 60 * 60 * 1000);
+      const isRecent = nowKst.getTime() - pubKst.getTime() <= 36 * 60 * 60 * 1000;
+      
+      return notExcluded && isRecent && item.mediaType === 'central';
+    });
 
     allItems.sort((a, b) => {
       if (a.publisher < b.publisher) return -1;
       if (a.publisher > b.publisher) return 1;
-      return new Date(a.pubDate).getTime() - new Date(b.pubDate).getTime();
+      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(); // Newest first for same publisher
     });
 
     res.json(allItems);
