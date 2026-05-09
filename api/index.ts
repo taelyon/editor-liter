@@ -4,6 +4,8 @@ import { GoogleDecoder } from 'google-news-url-decoder';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import iconv from 'iconv-lite';
+import { GoogleGenAI } from '@google/genai';
+import { classicsData as fallbackClassicsData } from '../src/data/classics';
 
 const app = express();
 
@@ -670,6 +672,71 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
   } catch (error: any) {
     console.error('RSS Fetch Error:', error);
     res.status(500).json({ error: 'Failed to fetch editorials', details: error.message });
+  }
+});
+
+let cachedClassics: any = null;
+let lastClassicsDate: string = '';
+
+app.get(['/api/classics', '/classics'], async (req, res) => {
+  try {
+    // Generate new quotes once a day
+    const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
+    if (cachedClassics && lastClassicsDate === today) {
+      return res.json(cachedClassics);
+    }
+    
+    if (process.env.GEMINI_API_KEY) {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `당신은 동양과 서양 고전에 정통한 매우 뛰어난 큐레이터입니다.
+매일 새로운 영감을 주는 고전 명언을 사람들에게 소개합니다.
+오늘을 위한 명언 6개(동양 고전 3개, 서양 고전 3개)를 무작위로 전혀 뻔하지 않고 새롭고 다양한 문헌에서 발췌해 주세요. (예: 논어, 군주론 외에도 한비자, 맹자, 채근담, 세네카, 플라톤, 셰익스피어, 에픽테토스 등 다양한 고전 활용)
+현재 시간: ${new Date().getTime()}
+정확히 아래 JSON 배열 형식으로만 응답해야 합니다.
+[
+  {
+    "id": 1,
+    "category": "동양" 또는 "서양",
+    "title": "책이나 문헌 이름 (예: 논어, 군주론)",
+    "author": "저자 이름",
+    "quote": "유명한 짧은 명언",
+    "content": "이 명언이 주는 핵심 교훈이나 통찰 (1~2문장)",
+    "fullText": "이 명언이 포함된 맥락을 알 수 있는 원문 번역 또는 전체 문구 (동양 고전의 경우 한자 원문 병기 권장)"
+  }
+]`,
+          config: {
+              responseMimeType: "application/json",
+              temperature: 0.9,
+          }
+      });
+
+      const text = response.text();
+      if (text) {
+          const parsed = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+          if (Array.isArray(parsed) && parsed.length > 0) {
+              // Add stable IDs
+              const dataWithIds = parsed.map((item, index) => ({
+                ...item,
+                id: index + 1
+              }));
+              cachedClassics = dataWithIds;
+              lastClassicsDate = today;
+              return res.json(dataWithIds);
+          }
+      }
+    }
+    
+    // Fallback if no API Key or Gemini fails
+    throw new Error('Gemini API Error or No API Key');
+  } catch (error: any) {
+    console.error('Classics Fetch Error:', error);
+    if (cachedClassics) {
+      return res.json(cachedClassics);
+    }
+    // Static fallback
+    res.json(fallbackClassicsData);
   }
 });
 
