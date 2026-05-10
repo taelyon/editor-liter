@@ -33,7 +33,7 @@ export default function Editorials() {
   // Use effect to update selectedDate when editorials load if the current selectedDate isn't in the available dates
   useEffect(() => {
     if (editorials.length > 0) {
-      const availableDates = Array.from(new Set(editorials.map(e => format(new Date(e.pubDate), 'yyyy-MM-dd'))));
+      const availableDates = Array.from<string>(new Set(editorials.map(e => format(new Date(e.pubDate), 'yyyy-MM-dd'))));
       if (!availableDates.includes(selectedDate) && availableDates.length > 0) {
         // Find the most recent date available
         availableDates.sort((a, b) => b.localeCompare(a));
@@ -187,7 +187,7 @@ export default function Editorials() {
 
           {articleDetail && articleDetail.content && (
             <div 
-              className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_p:empty]:hidden [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:!m-0 [&_figure]:!m-0 [&_figcaption]:!mt-2 [&_figcaption]:!mb-8 [&_figcaption]:text-[15px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-8 [&_em]:not-italic [&_em]:text-[15px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:!mt-2 [&_.img_desc]:mb-8 [&_div:has(>picture)]:!m-0 [&_div:has(>img)]:!m-0 [&_a]:text-blue-600 [&_picture]:block [&_picture_img]:!m-0"
+              className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_p:empty]:hidden [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:!mb-6 [&_img]:!mt-2 [&_figure]:!mb-6 [&_figure>img]:!mb-2 [&_figcaption]:!mt-2 [&_figcaption]:!mb-6 [&_figcaption]:text-[15px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-8 [&_em]:not-italic [&_em]:text-[15px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:!mt-2 [&_.img_desc]:mb-6 [&_div:has(>picture)]:!mb-6 [&_div:has(>img)]:!mb-6 [&_a]:text-blue-600 [&_picture]:block [&_picture_img]:!mb-2"
               dangerouslySetInnerHTML={{ 
                 __html: DOMPurify.sanitize(articleDetail.content, {
                   ADD_ATTR: ['referrerpolicy', 'loading', 'data-src', 'data-original', 'org-src', 'data-lazy-src', 'data-actual-src', 'data-alt-src', 'style']
@@ -216,7 +216,7 @@ export default function Editorials() {
               onChange={(e) => setSelectedDate(e.target.value)}
               className="bg-[#F5F1ED] border-none rounded px-3 py-2 text-[#1A1A1A] font-medium outline-none"
             >
-              {Array.from(new Set(editorials.map(e => format(new Date(e.pubDate), 'yyyy-MM-dd'))))
+              {Array.from<string>(new Set(editorials.map(e => format(new Date(e.pubDate), 'yyyy-MM-dd'))))
                 .sort((a, b) => b.localeCompare(a))
                 .map(date => (
                 <option key={date} value={date}>{date}</option>
@@ -228,7 +228,7 @@ export default function Editorials() {
               className="bg-[#F5F1ED] border-none rounded px-3 py-2 text-[#1A1A1A] font-medium outline-none"
             >
               <option value="all">모든 언론사</option>
-              {Array.from(new Set(editorials.map(e => e.publisher)))
+              {Array.from<string>(new Set(editorials.map(e => e.publisher)))
                 .sort()
                 .map(pub => (
                 <option key={pub} value={pub}>{pub}</option>
