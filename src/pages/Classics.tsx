@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
+import { useSwipe } from '../lib/useSwipe';
 
 interface Classic {
   id: number;
@@ -12,6 +14,12 @@ interface Classic {
 }
 
 export default function Classics() {
+  const navigate = useNavigate();
+  const tabSwipeHandlers = useSwipe({
+    onSwipedLeft: () => navigate('/settings'),
+    onSwipedRight: () => navigate('/'),
+  });
+
   const [filter, setFilter] = useState<'전체' | '동양' | '서양'>('전체');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [classics, setClassics] = useState<Classic[]>([]);
@@ -39,7 +47,10 @@ export default function Classics() {
     : classics.filter(c => c.category === filter);
 
   return (
-    <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen">
+    <div 
+      className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen"
+      {...tabSwipeHandlers}
+    >
       <header className="mb-6 flex items-center justify-between border-b border-[#EAE4DD] pb-6">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight text-[#1A1A1A]">오늘의 고전</h1>

@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
 import { BellRing, Check, Save } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useSwipe } from '../lib/useSwipe';
 
 export default function Settings() {
+  const navigate = useNavigate();
+  const tabSwipeHandlers = useSwipe({
+    onSwipedRight: () => navigate('/classics'),
+  });
+
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
@@ -47,7 +54,10 @@ export default function Settings() {
   };
 
   return (
-    <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen">
+    <div 
+      className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen"
+      {...tabSwipeHandlers}
+    >
       <header className="mb-6 flex items-center justify-between border-b border-[#EAE4DD] pb-6">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight text-[#1A1A1A]">구독 설정</h1>

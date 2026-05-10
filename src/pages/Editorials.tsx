@@ -3,6 +3,8 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import DOMPurify from 'dompurify';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useSwipe } from '../lib/useSwipe';
 
 interface Editorial {
   id: string;
@@ -22,6 +24,11 @@ interface ArticleDetail {
 }
 
 export default function Editorials() {
+  const navigate = useNavigate();
+  const tabSwipeHandlers = useSwipe({
+    onSwipedLeft: () => navigate('/classics'),
+  });
+
   const [editorials, setEditorials] = useState<Editorial[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchFailed, setFetchFailed] = useState(false);
@@ -142,9 +149,16 @@ export default function Editorials() {
     setArticleDetail(null);
   };
 
+  const articleSwipeHandlers = useSwipe({
+    onSwipedRight: closeArticle,
+  });
+
   if (selectedArticle) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#FCFAF7] overflow-y-auto w-full h-full pb-24">
+      <div 
+        className="fixed inset-0 z-50 bg-[#FCFAF7] overflow-y-auto w-full h-full pb-24"
+        {...articleSwipeHandlers}
+      >
         <header className="sticky top-0 bg-[#FCFAF7]/90 backdrop-blur-sm border-b border-[#EAE4DD] p-4 flex items-center justify-between z-10 w-full mb-6 text-[#1A1A1A]">
           <button onClick={closeArticle} className="p-2 -ml-2 rounded-full hover:bg-black/5" aria-label="Go back">
             <ArrowLeft className="w-6 h-6" />
@@ -220,7 +234,10 @@ export default function Editorials() {
   }
 
   return (
-    <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen">
+    <div 
+      className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen"
+      {...tabSwipeHandlers}
+    >
       <header className="mb-6 flex flex-col gap-4 border-b border-[#EAE4DD] pb-6">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight text-[#1A1A1A]">오늘의 사설</h1>
