@@ -186,6 +186,20 @@ app.get(['/api/article', '/article'], async (req, res) => {
     
     document.querySelectorAll('audio, video').forEach(el => el.remove());
 
+    // Remove width and height attributes from images to prevent huge gaps
+    document.querySelectorAll('img').forEach(el => {
+      el.removeAttribute('width');
+      el.removeAttribute('height');
+      el.removeAttribute('style'); // Strip inline styles on images too
+    });
+
+    // Also strip inline styles from any div wrapping an image, as some sites use padding/aspect-ratio on wrappers
+    document.querySelectorAll('div, figure, picture, span').forEach(el => {
+       if (el.querySelector('img')) {
+          el.removeAttribute('style');
+       }
+    });
+
     // MK Member Login barrier text cleanup
     document.querySelectorAll('div, p, span, strong, em').forEach(el => {
        const text = el.textContent?.trim() || '';
@@ -612,16 +626,36 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
            const linkMatch = itemXml.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || itemXml.match(/<link>([\s\S]*?)<\/link>/i);
            const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+           const dcDateMatch = itemXml.match(/<dc:date>([\s\S]*?)<\/dc:date>/i);
            let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
            if (!descMatch) descMatch = itemXml.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i) || itemXml.match(/<content:encoded>([\s\S]*?)<\/content:encoded>/i);
            
            const title = titleMatch ? titleMatch[1].trim() : '';
            const link = linkMatch ? linkMatch[1].trim() : '';
-           const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toUTCString();
+           
+           let pubDate = pubDateMatch ? pubDateMatch[1].trim() : (dcDateMatch ? dcDateMatch[1].trim() : '');
+           if (!pubDate && f.publisher === '한겨레') {
+               const dateMatch = itemXml.match(/\/(202\d)\/(0[1-9]|1[0-2])([0-3][0-9])\//);
+               if (dateMatch) {
+                   pubDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00Z`;
+               }
+           }
+           if (!pubDate) pubDate = new Date().toUTCString();
+           
            let description = descMatch ? descMatch[1].trim() : '';
+           description = description
+             .replace(/&lt;/g, '<')
+             .replace(/&gt;/g, '>')
+             .replace(/&quot;/g, '"')
+             .replace(/&apos;/g, "'")
+             .replace(/&amp;/g, '&')
+             .replace(/&nbsp;/g, ' ');
            description = description.replace(/<[^>]+>/g, '').trim();
            
            if (title.includes('사설')) {
+               if (link === 'https://www.hani.co.kr/arti/opinion' || link === 'https://www.hani.co.kr/arti/opinion/') {
+                   continue; // Skip section top-level pages
+               }
                items.push({
                    id: link,
                    publisher: f.publisher,
@@ -659,9 +693,25 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
            
            let title = titleMatch ? titleMatch[1].trim() : '';
+           title = title
+              .replace(/&#183;/g, '·')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&quot;/g, '"')
+              .replace(/&apos;/g, "'")
+              .replace(/&amp;/g, '&');
+              
            let trackingLink = linkMatch ? linkMatch[1].trim() : '';
+           trackingLink = trackingLink.replace(/&amp;/g, '&');
            const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toUTCString();
            let description = descMatch ? descMatch[1].trim() : '';
+           description = description
+             .replace(/&lt;/g, '<')
+             .replace(/&gt;/g, '>')
+             .replace(/&quot;/g, '"')
+             .replace(/&apos;/g, "'")
+             .replace(/&amp;/g, '&')
+             .replace(/&nbsp;/g, ' ');
            description = description.replace(/<[^>]+>/g, '').trim();
            
            let link = trackingLink;
@@ -693,6 +743,9 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            else if (link.includes('asiae.co.kr')) publisher = '아시아경제';
 
            if (title.includes('사설')) {
+               if (link === 'https://www.hani.co.kr/arti/opinion' || link === 'https://www.hani.co.kr/arti/opinion/') {
+                   continue; // Skip section top-level pages
+               }
                items.push({
                    id: link,
                    publisher,
@@ -721,6 +774,23 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
        }
     }
 
+    // Attempt to fetch actual pubDate for 한겨레 articles if needed
+    const haniItemsToFix = allItems.filter(item => item.publisher === '한겨레');
+    if (haniItemsToFix.length > 0) {
+        await Promise.allSettled(haniItemsToFix.map(async (item) => {
+            try {
+                const res = await fetch(item.link);
+                const text = await res.text();
+                const match = text.match(/article:published_time["']?\s*content=["']([^"']+)["']/i);
+                if (match && match[1]) {
+                    item.pubDate = match[1];
+                }
+            } catch (e: any) {
+                console.error('Failed to fetch HanKyoReh original date:', e.message);
+            }
+        }));
+    }
+
     const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
     
     // Filter out old news (older than 24-36h depending on needs) and excluded sources
@@ -730,7 +800,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       const source = (item.publisher || '').toLowerCase();
       const notExcluded = !excludedSources.some(excluded => item.link.includes(excluded) || source.includes(excluded));
       const pubKst = new Date(new Date(item.pubDate || '').getTime() + 9 * 60 * 60 * 1000);
-      const isRecent = nowKst.getTime() - pubKst.getTime() <= 36 * 60 * 60 * 1000;
+      const isRecent = nowKst.getTime() - pubKst.getTime() <= 72 * 60 * 60 * 1000; // 3 days
       
       return notExcluded && isRecent && item.mediaType === 'central';
     });

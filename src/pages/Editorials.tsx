@@ -27,7 +27,20 @@ export default function Editorials() {
   const [errorMessage, setErrorMessage] = useState('');
   const [readArticles, setReadArticles] = useState<Set<string>>(new Set());
   
-  // Article viewing state
+  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedPublisher, setSelectedPublisher] = useState<string>('all');
+
+  // Use effect to update selectedDate when editorials load if the current selectedDate isn't in the available dates
+  useEffect(() => {
+    if (editorials.length > 0) {
+      const availableDates = Array.from(new Set(editorials.map(e => format(new Date(e.pubDate), 'yyyy-MM-dd'))));
+      if (!availableDates.includes(selectedDate) && availableDates.length > 0) {
+        // Find the most recent date available
+        availableDates.sort((a, b) => b.localeCompare(a));
+        setSelectedDate(availableDates[0]);
+      }
+    }
+  }, [editorials, selectedDate]);
   const [selectedArticle, setSelectedArticle] = useState<Editorial | null>(null);
   const [articleDetail, setArticleDetail] = useState<ArticleDetail | null>(null);
   const [articleLoading, setArticleLoading] = useState(false);
@@ -174,7 +187,7 @@ export default function Editorials() {
 
           {articleDetail && articleDetail.content && (
             <div 
-              className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_img]:rounded-md [&_img]:my-6 [&_figure]:my-8 [&_figure_img]:mb-2 [&_figcaption]:mt-2 [&_figcaption]:mb-10 [&_figcaption]:text-[15px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-10 [&_em]:not-italic [&_em]:text-[15px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:mb-10 [&_div:has(>picture)]:my-10 [&_div:has(>picture)>p:last-child]:!mb-0 [&_div:has(>picture)>p:last-child]:text-[15px] [&_div:has(>picture)>p:last-child]:text-gray-500 [&_div:has(>picture)>p:last-child]:leading-snug [&_div:has(>img)]:my-10 [&_div:has(>img)>p:last-child]:!mb-0 [&_div:has(>img)>p:last-child]:text-[15px] [&_div:has(>img)>p:last-child]:text-gray-500 [&_div:has(>img)>p:last-child]:leading-snug [&_a]:text-blue-600"
+              className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_p:empty]:hidden [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:!m-0 [&_figure]:!m-0 [&_figcaption]:!mt-2 [&_figcaption]:!mb-8 [&_figcaption]:text-[15px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-8 [&_em]:not-italic [&_em]:text-[15px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:!mt-2 [&_.img_desc]:mb-8 [&_div:has(>picture)]:!m-0 [&_div:has(>img)]:!m-0 [&_a]:text-blue-600 [&_picture]:block [&_picture_img]:!m-0"
               dangerouslySetInnerHTML={{ 
                 __html: DOMPurify.sanitize(articleDetail.content, {
                   ADD_ATTR: ['referrerpolicy', 'loading', 'data-src', 'data-original', 'org-src', 'data-lazy-src', 'data-actual-src', 'data-alt-src', 'style']
@@ -189,13 +202,40 @@ export default function Editorials() {
 
   return (
     <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen">
-      <header className="mb-6 flex items-center justify-between border-b border-[#EAE4DD] pb-6">
+      <header className="mb-6 flex flex-col gap-4 border-b border-[#EAE4DD] pb-6">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight text-[#1A1A1A]">오늘의 사설</h1>
           <p className="text-base text-gray-500 mt-1">
             {format(new Date(), 'yyyy년 M월 d일 eeee', { locale: ko })}
           </p>
         </div>
+        {!loading && editorials.length > 0 && (
+          <div className="flex flex-wrap gap-2 text-sm">
+            <select 
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-[#F5F1ED] border-none rounded px-3 py-2 text-[#1A1A1A] font-medium outline-none"
+            >
+              {Array.from(new Set(editorials.map(e => format(new Date(e.pubDate), 'yyyy-MM-dd'))))
+                .sort((a, b) => b.localeCompare(a))
+                .map(date => (
+                <option key={date} value={date}>{date}</option>
+              ))}
+            </select>
+            <select
+              value={selectedPublisher}
+              onChange={(e) => setSelectedPublisher(e.target.value)}
+              className="bg-[#F5F1ED] border-none rounded px-3 py-2 text-[#1A1A1A] font-medium outline-none"
+            >
+              <option value="all">모든 언론사</option>
+              {Array.from(new Set(editorials.map(e => e.publisher)))
+                .sort()
+                .map(pub => (
+                <option key={pub} value={pub}>{pub}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </header>
 
       {loading ? (
@@ -209,12 +249,11 @@ export default function Editorials() {
           ))}
         </div>
       ) : (() => {
-        const today = new Date();
         const filteredEditorials = editorials.filter(article => {
-          const articleDate = new Date(article.pubDate);
-          return articleDate.getFullYear() === today.getFullYear() &&
-                 articleDate.getMonth() === today.getMonth() &&
-                 articleDate.getDate() === today.getDate();
+          const articleDate = format(new Date(article.pubDate), 'yyyy-MM-dd');
+          const dateMatch = articleDate === selectedDate;
+          const publisherMatch = selectedPublisher === 'all' || article.publisher === selectedPublisher;
+          return dateMatch && publisherMatch;
         });
         
         if (filteredEditorials.length > 0) {
@@ -234,16 +273,11 @@ export default function Editorials() {
                       {format(new Date(article.pubDate), 'yyyy-MM-dd HH:mm')}
                     </span>
                   </div>
-                  <h2 className={`text-xl font-serif leading-snug font-bold mb-3 transition-colors ${
+                  <h2 className={`text-xl font-serif leading-snug font-bold transition-colors ${
                     readArticles.has(article.link) ? 'text-gray-400' : 'text-[#1A1A1A]'
                   }`}>
                     {article.title}
                   </h2>
-                  <p className={`text-base line-clamp-2 leading-relaxed transition-colors ${
-                    readArticles.has(article.link) ? 'text-gray-300' : 'text-gray-600'
-                  }`}>
-                    {article.contentSnippet}
-                  </p>
                 </div>
               ))}
             </div>
