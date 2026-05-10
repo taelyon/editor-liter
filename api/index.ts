@@ -165,7 +165,12 @@ app.get(['/api/article', '/article'], async (req, res) => {
       // HanKyoReh Elements
       'div[class*="AudioPlayer"]', // Audio player
       'div[class*="BaseAd"]', // Advertisement
-      'div[class*="adWrap"]' // Advertisement wrapper
+      'div[class*="adWrap"]', // Advertisement wrapper
+      // Additional Ads
+      '[id^="ad_"]',
+      '[class*="ad_center"]',
+      '[class*="ad_wrap"]',
+      '[id*="div-gpt-ad"]'
     ];
 
     removeSelectors.forEach(selector => {
@@ -273,6 +278,21 @@ app.get(['/api/article', '/article'], async (req, res) => {
     // Strip out hamburger menu and nav elements that Readability might accidentally parse
     document.querySelectorAll('nav, header, footer, .hamburger, [data-section*="hamburger"]').forEach(el => el.remove());
 
+    // Add extract variables for updated time
+    let articleUpdatedAt = '';
+    const metaMod = document.querySelector('meta[property="article:modified_time"]') || 
+                    document.querySelector('meta[name="article:modified_time"]') ||
+                    document.querySelector('meta[itemprop="dateModified"]');
+    if (metaMod) {
+       articleUpdatedAt = metaMod.getAttribute('content') || '';
+    } else {
+       // Fallback for Hankyoreh and others that use "수정 <span>date</span>"
+       const textMatch = html.match(/수정\s*<span[^>]*>([^<]+)<\/span>/);
+       if (textMatch && textMatch[1]) {
+           articleUpdatedAt = textMatch[1].trim(); // Usually "YYYY-MM-DD HH:mm"
+       }
+    }
+
     // Check for Arc XP / Fusion global content (Chosun, etc. browser-side render)
     // Inject it into DOM before Readability parsing
     const scripts = document.querySelectorAll('script');
@@ -285,6 +305,11 @@ app.get(['/api/article', '/article'], async (req, res) => {
           if (endIdx === -1) endIdx = jsonStr.indexOf(';');
           if (endIdx !== -1) jsonStr = jsonStr.substring(0, endIdx);
           const fusionData = JSON.parse(jsonStr);
+          
+          if (fusionData && fusionData.last_updated_date) {
+             articleUpdatedAt = fusionData.last_updated_date;
+          }
+
           if (fusionData && fusionData.content_elements) {
             const elements: string[] = [];
             fusionData.content_elements.forEach((el: any) => {
@@ -567,13 +592,20 @@ app.get(['/api/article', '/article'], async (req, res) => {
         }
       });
     }
+    
+    let finalContent = cleanDocument.body?.innerHTML || article.content;
+    
+    // Clean up excessive BR tags and spaces after block elements
+    finalContent = finalContent.replace(/(<br\s*\/?>\s*){2,}/gi, '<br>');
+    finalContent = finalContent.replace(/(<\/(div|figure|picture|figcaption|p|h[1-6])>)\s*(<br\s*\/?>\s*)+/gi, '$1');
 
     res.json({
       title: article.title,
-      content: cleanDocument.body?.innerHTML || article.content,
+      content: finalContent,
       textContent: article.textContent,
       byline: article.byline,
-      originalUrl: targetUrl
+      originalUrl: targetUrl,
+      updatedAt: articleUpdatedAt
     });
   } catch (err: any) {
     console.error('Article Fetch Error:', err);

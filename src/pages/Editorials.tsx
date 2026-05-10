@@ -18,6 +18,7 @@ interface ArticleDetail {
   content: string;
   byline: string;
   originalUrl: string;
+  updatedAt?: string;
 }
 
 export default function Editorials() {
@@ -163,8 +164,23 @@ export default function Editorials() {
             <h1 className="text-2xl font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
               {articleDetail ? articleDetail.title : selectedArticle.title}
             </h1>
-            <div className="text-base text-gray-500 font-mono tracking-tighter">
-              {format(new Date(selectedArticle.pubDate), 'yyyy-MM-dd HH:mm')}
+            <div className="text-base text-gray-500 font-mono tracking-tighter flex gap-3 flex-wrap">
+              <span>입력 {format(new Date(selectedArticle.pubDate), 'yyyy-MM-dd HH:mm')}</span>
+              {(() => {
+                if (!articleDetail?.updatedAt) return null;
+                const pubDateStr = format(new Date(selectedArticle.pubDate), 'yyyy-MM-dd HH:mm');
+                const updateDateStr = Number.isNaN(new Date(articleDetail.updatedAt).getTime()) 
+                  ? articleDetail.updatedAt 
+                  : format(new Date(articleDetail.updatedAt), 'yyyy-MM-dd HH:mm');
+                
+                if (pubDateStr === updateDateStr) return null;
+                
+                return (
+                  <span>
+                    {selectedArticle.publisher === '한겨레' ? '수정' : '업데이트'} {updateDateStr}
+                  </span>
+                );
+              })()}
             </div>
           </div>
 
