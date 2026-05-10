@@ -160,7 +160,7 @@ export default function Editorials() {
 
         <article className="px-4 max-w-2xl lg:max-w-4xl mx-auto">
           <div className="border-b border-[#EAE4DD] pb-6 mb-6 mt-4">
-            <h1 className="text-3xl font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
+            <h1 className="text-2xl font-serif leading-snug font-bold text-[#1A1A1A] mb-3">
               {articleDetail ? articleDetail.title : selectedArticle.title}
             </h1>
             <div className="text-base text-gray-500 font-mono tracking-tighter">
