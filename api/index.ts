@@ -590,7 +590,9 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
 
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
     
-    for (const f of directFeeds) {
+    // Fetch all direct feeds and bing news in parallel
+    const feedPromises = directFeeds.map(async (f) => {
+      const items: any[] = [];
       try {
         const response = await fetch(f.url, {
            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -603,8 +605,9 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            text = iconv.decode(Buffer.from(buffer), 'euc-kr');
         }
         
+        const localRegex = /<item>([\s\S]*?)<\/item>/gi;
         let match;
-        while ((match = itemRegex.exec(text)) !== null) {
+        while ((match = localRegex.exec(text)) !== null) {
            const itemXml = match[1];
            const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
            const linkMatch = itemXml.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || itemXml.match(/<link>([\s\S]*?)<\/link>/i);
@@ -619,7 +622,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            description = description.replace(/<[^>]+>/g, '').trim();
            
            if (title.includes('사설')) {
-               allItems.push({
+               items.push({
                    id: link,
                    publisher: f.publisher,
                    title,
@@ -633,75 +636,89 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       } catch (err) {
         console.error(`Failed to fetch direct RSS from ${f.publisher}:`, err);
       }
-    }
+      return items;
+    });
 
-    // Bing News Fallback
-    try {
-      const bingUrl = 'https://www.bing.com/news/search?q=%22%EC%82%AC%EC%84%A4%22&cc=kr&format=rss';
-      const bingResponse = await fetch(bingUrl, {
-         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-         signal: AbortSignal.timeout(5000)
-      });
-      const text = await bingResponse.text();
-      
-      let match;
-      while ((match = itemRegex.exec(text)) !== null) {
-         const itemXml = match[1];
-         const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
-         const linkMatch = itemXml.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || itemXml.match(/<link>([\s\S]*?)<\/link>/i);
-         const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
-         let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
-         
-         let title = titleMatch ? titleMatch[1].trim() : '';
-         let trackingLink = linkMatch ? linkMatch[1].trim() : '';
-         const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toUTCString();
-         let description = descMatch ? descMatch[1].trim() : '';
-         description = description.replace(/<[^>]+>/g, '').trim();
-         
-         // Extract real url from bing tracking link
-         let link = trackingLink;
-         try {
-             const urlObj = new URL(trackingLink);
-             const target = urlObj.searchParams.get('url');
-             if (target) {
-                 link = target;
-             }
-         } catch(e) {}
-         
-         // Try to deduce publisher from link
-         let publisher = '종합 일간지';
-         if (link.includes('chosun.com')) publisher = '조선일보';
-         else if (link.includes('hani.co.kr')) publisher = '한겨레';
-         else if (link.includes('khan.co.kr')) publisher = '경향신문';
-         else if (link.includes('donga.com')) publisher = '동아일보';
-         else if (link.includes('joins.com') || link.includes('joongang.co.kr')) publisher = '중앙일보';
-         else if (link.includes('hankyung.com')) publisher = '한국경제';
-         else if (link.includes('mk.co.kr')) publisher = '매일경제';
-         else if (link.includes('sedaily.com')) publisher = '서울경제';
-         else if (link.includes('hankookilbo.com')) publisher = '한국일보';
-         else if (link.includes('seoul.co.kr')) publisher = '서울신문';
-         else if (link.includes('segye.com')) publisher = '세계일보';
-         else if (link.includes('kmib.co.kr')) publisher = '국민일보';
-         else if (link.includes('munhwa.com')) publisher = '문화일보';
-         else if (link.includes('fnnews.com')) publisher = '파이낸셜뉴스';
-         else if (link.includes('mt.co.kr')) publisher = '머니투데이';
-         else if (link.includes('edaily.co.kr')) publisher = '이데일리';
-         else if (link.includes('asiae.co.kr')) publisher = '아시아경제';
+    const bingPromise = (async () => {
+      const items: any[] = [];
+      try {
+        const bingUrl = 'https://www.bing.com/news/search?q=%22%EC%82%AC%EC%84%A4%22&cc=kr&format=rss';
+        const bingResponse = await fetch(bingUrl, {
+           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+           signal: AbortSignal.timeout(5000)
+        });
+        const text = await bingResponse.text();
+        
+        const localRegex = /<item>([\s\S]*?)<\/item>/gi;
+        let match;
+        while ((match = localRegex.exec(text)) !== null) {
+           const itemXml = match[1];
+           const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
+           const linkMatch = itemXml.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || itemXml.match(/<link>([\s\S]*?)<\/link>/i);
+           const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+           let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
+           
+           let title = titleMatch ? titleMatch[1].trim() : '';
+           let trackingLink = linkMatch ? linkMatch[1].trim() : '';
+           const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toUTCString();
+           let description = descMatch ? descMatch[1].trim() : '';
+           description = description.replace(/<[^>]+>/g, '').trim();
+           
+           let link = trackingLink;
+           try {
+               const urlObj = new URL(trackingLink);
+               const target = urlObj.searchParams.get('url');
+               if (target) {
+                   link = target;
+               }
+           } catch(e) {}
+           
+           let publisher = '종합 일간지';
+           if (link.includes('chosun.com')) publisher = '조선일보';
+           else if (link.includes('hani.co.kr')) publisher = '한겨레';
+           else if (link.includes('khan.co.kr')) publisher = '경향신문';
+           else if (link.includes('donga.com')) publisher = '동아일보';
+           else if (link.includes('joins.com') || link.includes('joongang.co.kr')) publisher = '중앙일보';
+           else if (link.includes('hankyung.com')) publisher = '한국경제';
+           else if (link.includes('mk.co.kr')) publisher = '매일경제';
+           else if (link.includes('sedaily.com')) publisher = '서울경제';
+           else if (link.includes('hankookilbo.com')) publisher = '한국일보';
+           else if (link.includes('seoul.co.kr')) publisher = '서울신문';
+           else if (link.includes('segye.com')) publisher = '세계일보';
+           else if (link.includes('kmib.co.kr')) publisher = '국민일보';
+           else if (link.includes('munhwa.com')) publisher = '문화일보';
+           else if (link.includes('fnnews.com')) publisher = '파이낸셜뉴스';
+           else if (link.includes('mt.co.kr')) publisher = '머니투데이';
+           else if (link.includes('edaily.co.kr')) publisher = '이데일리';
+           else if (link.includes('asiae.co.kr')) publisher = '아시아경제';
 
-         if (title.includes('사설') && !allItems.some(item => item.link === link || item.title === title)) {
-             allItems.push({
-                 id: link,
-                 publisher,
-                 title,
-                 link,
-                 pubDate,
-                 contentSnippet: description.length > 200 ? description.substring(0, 200) + '...' : description,
-                 mediaType: centralMedia.includes(publisher) ? 'central' : 'local'
-             });
-         }
+           if (title.includes('사설')) {
+               items.push({
+                   id: link,
+                   publisher,
+                   title,
+                   link,
+                   pubDate,
+                   contentSnippet: description.length > 200 ? description.substring(0, 200) + '...' : description,
+                   mediaType: centralMedia.includes(publisher) ? 'central' : 'local'
+               });
+           }
+        }
+      } catch (err) {
+        console.error('Failed to fetch Bing News RSS:', err);
       }
-    } catch (err) {
-      console.error('Failed to fetch Bing News RSS:', err);
+      return items;
+    })();
+
+    const results = await Promise.all([...feedPromises, bingPromise]);
+    
+    // Flatten and deduplicate
+    for (const items of results) {
+       for (const item of items) {
+           if (!allItems.some(existing => existing.link === item.link || existing.title === item.title)) {
+               allItems.push(item);
+           }
+       }
     }
 
     const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
@@ -724,6 +741,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(); // Newest first for same publisher
     });
 
+    res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=86400');
     res.json(allItems);
   } catch (error: any) {
     console.error('RSS Fetch Error:', error);
@@ -739,6 +757,7 @@ app.get(['/api/classics', '/classics'], async (req, res) => {
     // Generate new quotes once a day
     const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
     if (cachedClassics && lastClassicsDate === today) {
+      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
       return res.json(cachedClassics);
     }
     
@@ -779,6 +798,7 @@ app.get(['/api/classics', '/classics'], async (req, res) => {
               }));
               cachedClassics = dataWithIds;
               lastClassicsDate = today;
+              res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
               return res.json(dataWithIds);
           }
       }
@@ -794,9 +814,11 @@ app.get(['/api/classics', '/classics'], async (req, res) => {
       console.error('Classics Fetch Error:', error.message);
     }
     if (cachedClassics) {
+      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
       return res.json(cachedClassics);
     }
     // Static fallback
+    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
     res.json(fallbackClassicsData);
   }
 });
