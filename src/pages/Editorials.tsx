@@ -165,21 +165,24 @@ export default function Editorials() {
               {articleDetail ? articleDetail.title : selectedArticle.title}
             </h1>
             <div className="text-base text-gray-500 font-mono tracking-tighter flex gap-3 flex-wrap">
-              <span>입력 {format(new Date(selectedArticle.pubDate), 'yyyy-MM-dd HH:mm')}</span>
               {(() => {
-                if (!articleDetail?.updatedAt) return null;
                 const pubDateStr = format(new Date(selectedArticle.pubDate), 'yyyy-MM-dd HH:mm');
-                const updateDateStr = Number.isNaN(new Date(articleDetail.updatedAt).getTime()) 
-                  ? articleDetail.updatedAt 
-                  : format(new Date(articleDetail.updatedAt), 'yyyy-MM-dd HH:mm');
                 
-                if (pubDateStr === updateDateStr) return null;
+                if (articleDetail?.updatedAt) {
+                  const updateDateStr = Number.isNaN(new Date(articleDetail.updatedAt).getTime()) 
+                    ? articleDetail.updatedAt 
+                    : format(new Date(articleDetail.updatedAt), 'yyyy-MM-dd HH:mm');
+                  
+                  if (pubDateStr !== updateDateStr) {
+                    return (
+                      <span>
+                        {selectedArticle.publisher === '한겨레' ? '수정' : '업데이트'} {updateDateStr}
+                      </span>
+                    );
+                  }
+                }
                 
-                return (
-                  <span>
-                    {selectedArticle.publisher === '한겨레' ? '수정' : '업데이트'} {updateDateStr}
-                  </span>
-                );
+                return <span>입력 {pubDateStr}</span>;
               })()}
             </div>
           </div>
