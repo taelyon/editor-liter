@@ -48,6 +48,7 @@ export default function Editorials() {
   const [articleError, setArticleError] = useState('');
   
   const lastFetchTime = useRef<number>(Date.now());
+  const touchStart = useRef<{x: number, y: number} | null>(null);
 
   useEffect(() => {
     // Load read articles from localStorage
@@ -142,9 +143,37 @@ export default function Editorials() {
     setArticleDetail(null);
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStart.current = {
+      x: e.targetTouches[0].clientX,
+      y: e.targetTouches[0].clientY,
+    };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStart.current) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+
+    const deltaX = touchEndX - touchStart.current.x;
+    const deltaY = touchEndY - touchStart.current.y;
+
+    // A swipe that is mostly horizontal and to the right
+    if (deltaX > 80 && Math.abs(deltaY) < Math.abs(deltaX) * 0.6) {
+      closeArticle();
+    }
+
+    touchStart.current = null;
+  };
+
   if (selectedArticle) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#FCFAF7] overflow-y-auto w-full h-full pb-24">
+      <div 
+        className="fixed inset-0 z-50 bg-[#FCFAF7] overflow-y-auto w-full h-full pb-24"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <header className="sticky top-0 bg-[#FCFAF7]/90 backdrop-blur-sm border-b border-[#EAE4DD] p-4 flex items-center justify-between z-10 w-full mb-6 text-[#1A1A1A]">
           <button onClick={closeArticle} className="p-2 -ml-2 rounded-full hover:bg-black/5" aria-label="Go back">
             <ArrowLeft className="w-6 h-6" />
