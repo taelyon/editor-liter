@@ -251,6 +251,7 @@ export default function Editorials() {
             exit={{ x: '100%', opacity: 0.5 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200, mass: 0.8 }}
             drag="x"
+            dragDirectionLock={true}
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={{ left: 0, right: 1 }}
             onDragEnd={(e, { offset, velocity }) => {
