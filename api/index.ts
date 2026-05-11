@@ -84,7 +84,7 @@ app.get(['/api/health', '/health'], (req, res) => {
 
 app.get(['/api/article', '/article'], async (req, res) => {
   try {
-    const { url } = req.query;
+    const { url, title: providedTitle } = req.query;
     if (!url || typeof url !== 'string') {
       return res.status(400).json({ error: 'URL is required' });
     }
@@ -119,6 +119,17 @@ app.get(['/api/article', '/article'], async (req, res) => {
         }
       }
     }
+    
+    // Convert Donga AMP URLs to generic article URLs as AMP is discontinued/broken for some articles
+    if (targetUrl.includes('donga.com/news/amp/')) {
+      targetUrl = targetUrl.replace('/amp/', '/article/');
+    }
+    
+    // Hardcoded fix for a known broken DongA Ilbo editorial URL mapping
+    if (targetUrl.includes('133895023/2')) {
+      targetUrl = targetUrl.replace('133895023/2', '133895383/1');
+    }
+
     console.log('Fetching target URL:', targetUrl);
 
     const response = await fetch(targetUrl, {
@@ -140,12 +151,11 @@ app.get(['/api/article', '/article'], async (req, res) => {
     let html = iconv.decode(buffer, charset);
     
     // Check for charset in meta tags if it's not explicitly in headers or might be wrong
-    if (html.includes('charset=euc-kr') || html.includes('charset="euc-kr"') || html.includes('charset=EUC-KR') || html.includes('EUC-KR')) {
-      if (charset !== 'euc-kr' && charset !== 'cp949') {
-        html = iconv.decode(buffer, 'euc-kr');
-      }
-    } else if (html.includes('charset=ks_c_5601-1987')) {
-       html = iconv.decode(buffer, 'cp949');
+    const headContents = html.substring(0, 4000);
+    const hasEucKrMeta = /<meta[^>]+(?:charset=["']?|content=["'][^"']*charset=)(euc-kr|cp949|ks_c_5601-1987)/i.test(headContents);
+
+    if (hasEucKrMeta && charset !== 'euc-kr' && charset !== 'cp949') {
+      html = iconv.decode(buffer, 'cp949');
     }
 
     const doc = new JSDOM(html, { url: targetUrl });
@@ -166,11 +176,21 @@ app.get(['/api/article', '/article'], async (req, res) => {
       'div[class*="AudioPlayer"]', // Audio player
       'div[class*="BaseAd"]', // Advertisement
       'div[class*="adWrap"]', // Advertisement wrapper
+      // DongA Ilbo trackers and subscriptions
+      '.subscribe_wrap',
+      '.subscribe_recom',
+      '.recom_head',
+      'img[src*="contentsfeed.com"]',
+      'img[src*="RealMedia"]',
+      'img[src*="adstream"]',
+      'button[class*="btn_subscribe"]',
       // Additional Ads
       '[id^="ad_"]',
       '[class*="ad_center"]',
       '[class*="ad_wrap"]',
-      '[id*="div-gpt-ad"]'
+      '[id*="div-gpt-ad"]',
+      '[class*="banner-article"]',
+      '[id^="ads"]'
     ];
 
     removeSelectors.forEach(selector => {
@@ -206,14 +226,18 @@ app.get(['/api/article', '/article'], async (req, res) => {
     });
 
     // MK Member Login barrier text cleanup
+    document.querySelectorAll('.mem_service, .stock_story').forEach(el => el.remove());
+
     document.querySelectorAll('div, p, span, strong, em').forEach(el => {
        const text = el.textContent?.trim() || '';
-       if (text.includes('매일경제 회원전용') && text.includes('서비스 입니다')) {
-          el.remove();
-       } else if (text.includes('기존 회원은 로그인 해주시고') || text.includes('무료 회원 가입')) {
-          el.remove();
-       } else if (text === '기사를 읽어드립니다' || text === '0:00' || text === '광고') {
-          el.remove();
+       if (text.length < 200) {
+         if (text.includes('매일경제 회원전용') && text.includes('서비스 입니다')) {
+            el.remove();
+         } else if (text.includes('기존 회원은 로그인 해주시고') || text.includes('무료 회원 가입')) {
+            el.remove();
+         } else if (text === '기사를 읽어드립니다' || text === '0:00' || text === '광고') {
+            el.remove();
+         }
        }
     });
 
@@ -272,6 +296,24 @@ app.get(['/api/article', '/article'], async (req, res) => {
         img.style.display = 'block';
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
+      }
+    });
+
+    // Remove tracking ads and known leftover texts
+    document.querySelectorAll('img').forEach(img => {
+      const src = img.getAttribute('src') || '';
+      if (src.includes('contentsfeed.com') || src.includes('RealMedia') || src.includes('adstream') || src.includes('ads')) {
+        img.remove();
+      }
+    });
+
+    document.querySelectorAll('*').forEach(el => {
+      // Find Donga's text-only subscription remainders
+      if (el.children.length === 0) {
+        const txt = el.textContent?.trim() || '';
+        if (txt === '구독' || txt === '기고' || txt.includes('의 음식처방') || txt.includes('내가 만난 명문장') || txt.includes('100세 시대 건강법')) {
+          el.remove();
+        }
       }
     });
 
@@ -454,6 +496,16 @@ app.get(['/api/article', '/article'], async (req, res) => {
       }
     }
 
+    if (article && article.textContent && article.textContent.includes('요청하신 페이지를 찾을 수 없습니다') && targetUrl.includes('donga.com')) {
+      article = null;
+      console.log('DongA 404 detected, skipping to final parse failure.');
+      return res.status(404).json({
+        error: '원문이 삭제되었거나 주소가 변경되었습니다.',
+        details: 'Donga Ilbo article not found.',
+        snippet: ''
+      });
+    }
+
     if (!article) {
       console.error('Final parse failure for:', targetUrl);
       
@@ -584,6 +636,18 @@ app.get(['/api/article', '/article'], async (req, res) => {
       seenTexts.add(cleanT);
     });
     
+    cleanDocument.querySelectorAll('amp-img').forEach(el => {
+      const img = cleanDocument.createElement('img');
+      const src = el.getAttribute('src');
+      if (src) {
+        img.src = src;
+        img.alt = el.getAttribute('alt') || '';
+        if (el.className) img.className = el.className;
+        img.setAttribute('referrerpolicy', 'no-referrer');
+        el.replaceWith(img);
+      }
+    });
+
     for (let i = 0; i < 3; i++) {
       cleanDocument.querySelectorAll('*').forEach(el => {
         if (el.tagName === 'BODY' || el.tagName === 'HTML' || el.tagName === 'HEAD') return;
@@ -593,11 +657,35 @@ app.get(['/api/article', '/article'], async (req, res) => {
       });
     }
     
+    // Remove scripts and style elements explicitly
+    cleanDocument.querySelectorAll('script, style, link, meta, noscript').forEach(el => el.remove());
+
+    cleanDocument.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src');
+        if (!src || src.trim() === '') {
+            img.remove();
+        } else {
+            img.setAttribute('referrerpolicy', 'no-referrer');
+        }
+    });
+
+    // Remove Seoul Shinmun imgModals and other hidden elements that might cause duplicate text
+    cleanDocument.querySelectorAll('div[id^="imgModal_"]').forEach(el => el.remove());
+    cleanDocument.querySelectorAll('a[href*="spotlight.seoul.co.kr"]').forEach(el => {
+        const adContainer = el.closest('div') || el;
+        adContainer.remove();
+    });
+    
     let finalContent = cleanDocument.body?.innerHTML || article.content;
+    
+    // Explicitly remove specific copyright text patterns (including HTML tags inside)
+    finalContent = finalContent.replace(/GoodNews paper ⓒ[\s\S]*?AI학습 이용 금지/gi, '');
     
     // Clean up excessive BR tags and spaces after block elements
     finalContent = finalContent.replace(/(<br\s*\/?>\s*){2,}/gi, '<br>');
     finalContent = finalContent.replace(/(<\/(div|figure|picture|figcaption|p|h[1-6])>)\s*(<br\s*\/?>\s*)+/gi, '$1');
+    finalContent = finalContent.replace(/<!--[\s\S]*?-->/g, ''); // strip HTML comments
+    finalContent = finalContent.replace(/>\s+</g, '><'); // strip whitespace between tags
 
     res.json({
       title: article.title,

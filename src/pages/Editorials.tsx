@@ -122,7 +122,7 @@ export default function Editorials() {
     });
     
     try {
-      const res = await fetch(`/api/article?url=${encodeURIComponent(article.link)}`);
+      const res = await fetch(`/api/article?url=${encodeURIComponent(article.link)}&title=${encodeURIComponent(article.title)}`);
       if (!res.ok) {
         const errorData = await res.json().catch(() => null);
         throw new Error(errorData?.error || errorData?.details || 'Failed to load article');
@@ -206,7 +206,7 @@ export default function Editorials() {
 
           {articleDetail && articleDetail.content && (
             <div 
-              className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_p:empty]:hidden [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:!mb-6 [&_img]:!mt-2 [&_figure]:!mb-6 [&_figure>img]:!mb-2 [&_figcaption]:!mt-2 [&_figcaption]:!mb-6 [&_figcaption]:text-[15px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-8 [&_em]:not-italic [&_em]:text-[15px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:!mt-2 [&_.img_desc]:mb-6 [&_div:has(>picture)]:!mb-6 [&_div:has(>img)]:!mb-6 [&_a]:text-blue-600 [&_picture]:block [&_picture_img]:!mb-2"
+              className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_p:empty]:hidden [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:!mb-6 [&_img]:!mt-2 [&_figure]:!mb-6 [&_figure>img]:!mb-2 [&_figcaption]:!mt-2 [&_figcaption]:!mb-6 [&_figcaption]:text-[15px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-8 [&_em]:not-italic [&_em]:text-[15px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:!mt-2 [&_.img_desc]:mb-6 [&_div:has(>picture)]:!mb-6 [&_div:has(>img)]:!mb-6 [&_a]:text-blue-600 [&_picture]:block [&_picture_img]:!mb-2 [&_.caption]:text-[15px] [&_.caption]:text-gray-500 [&_.caption]:leading-snug [&_.caption]:!mt-2 [&_.caption]:!mb-6"
               dangerouslySetInnerHTML={{ 
                 __html: DOMPurify.sanitize(articleDetail.content, {
                   ADD_ATTR: ['referrerpolicy', 'loading', 'data-src', 'data-original', 'org-src', 'data-lazy-src', 'data-actual-src', 'data-alt-src', 'style']
