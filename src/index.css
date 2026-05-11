@@ -6,9 +6,10 @@
   --font-serif: 'Noto Serif KR', source-serif-pro, Georgia, serif;
 }
 
-html {
+html, body {
   overflow-y: scroll;
   scrollbar-gutter: stable;
+  overscroll-behavior-x: none;
 }
 
 @layer utilities {
