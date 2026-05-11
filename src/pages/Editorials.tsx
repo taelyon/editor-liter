@@ -85,15 +85,15 @@ export default function Editorials() {
 
     fetchEditorials();
 
-    // 1시간(60분 * 60초 * 1000밀리초) 주기로 자동 갱신
-    const interval = setInterval(fetchEditorials, 60 * 60 * 1000);
+    // 30분(30분 * 60초 * 1000밀리초) 주기로 자동 갱신
+    const interval = setInterval(fetchEditorials, 30 * 60 * 1000);
 
     // 모바일 등에서 화면이 켜지거나(잠금 해제) 앱/탭으로 돌아왔을 때 확인
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const now = Date.now();
-        // 마지막 업데이트 이후 1시간(또는 일정 시간)이 지났으면 즉시 갱신
-        if (now - lastFetchTime.current >= 60 * 60 * 1000) {
+        // 마지막 업데이트 이후 30분(또는 일정 시간)이 지났으면 즉시 갱신
+        if (now - lastFetchTime.current >= 30 * 60 * 1000) {
           fetchEditorials();
         }
       }
