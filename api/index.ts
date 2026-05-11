@@ -630,8 +630,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
     const directFeeds = [
       { publisher: '조선일보', url: 'https://www.chosun.com/arc/outboundfeeds/rss/category/opinion/?outputType=xml' },
       { publisher: '한겨레', url: 'https://www.hani.co.kr/rss/opinion/' },
-      { publisher: '매일경제', url: 'https://www.mk.co.kr/rss/30200030/' },
-      { publisher: 'SBS', url: 'https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=14' }
+      { publisher: '경향신문', url: 'https://www.khan.co.kr/rss/rssdata/opinion.xml' },
+      { publisher: '서울신문', url: 'https://www.seoul.co.kr/news/newsInfo.php?rss=4' }
     ];
 
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -641,8 +641,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       const items: any[] = [];
       try {
         const response = await fetch(f.url, {
-           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-           signal: AbortSignal.timeout(5000)
+           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+           signal: AbortSignal.timeout(7000)
         });
         const buffer = await response.arrayBuffer();
         
@@ -708,7 +708,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
     const bingPromise = (async () => {
       const items: any[] = [];
       try {
-        const bingUrl = 'https://www.bing.com/news/search?q=%22%EC%82%AC%EC%84%A4%22&cc=kr&format=rss';
+        const bingUrl = 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+when:3d&hl=ko&gl=KR&ceid=KR:ko';
         const bingResponse = await fetch(bingUrl, {
            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
            signal: AbortSignal.timeout(5000)
@@ -722,6 +722,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
            const linkMatch = itemXml.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || itemXml.match(/<link>([\s\S]*?)<\/link>/i);
            const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+           const sourceMatch = itemXml.match(/<source[^>]*>([\s\S]*?)<\/source>/i);
            let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
            
            let title = titleMatch ? titleMatch[1].trim() : '';
@@ -733,6 +734,11 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
               .replace(/&apos;/g, "'")
               .replace(/&amp;/g, '&');
               
+           let publisherNameInner = sourceMatch ? sourceMatch[1].trim() : '';
+           if (publisherNameInner && title.endsWith(' - ' + publisherNameInner)) {
+               title = title.substring(0, title.length - (' - ' + publisherNameInner).length);
+           }
+           
            let trackingLink = linkMatch ? linkMatch[1].trim() : '';
            trackingLink = trackingLink.replace(/&amp;/g, '&');
            const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toUTCString();
@@ -747,37 +753,29 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            description = description.replace(/<[^>]+>/g, '').trim();
            
            let link = trackingLink;
-           try {
-               const urlObj = new URL(trackingLink);
-               const target = urlObj.searchParams.get('url');
-               if (target) {
-                   link = target;
-               }
-           } catch(e) {}
+           let publisher = sourceMatch ? sourceMatch[1].trim() : '종합 일간지';
            
-           let publisher = '종합 일간지';
-           if (link.includes('chosun.com')) publisher = '조선일보';
-           else if (link.includes('hani.co.kr')) publisher = '한겨레';
-           else if (link.includes('khan.co.kr')) publisher = '경향신문';
-           else if (link.includes('donga.com')) publisher = '동아일보';
-           else if (link.includes('joins.com') || link.includes('joongang.co.kr')) publisher = '중앙일보';
-           else if (link.includes('hankyung.com')) publisher = '한국경제';
-           else if (link.includes('mk.co.kr')) publisher = '매일경제';
-           else if (link.includes('sedaily.com')) publisher = '서울경제';
-           else if (link.includes('hankookilbo.com')) publisher = '한국일보';
-           else if (link.includes('seoul.co.kr')) publisher = '서울신문';
-           else if (link.includes('segye.com')) publisher = '세계일보';
-           else if (link.includes('kmib.co.kr')) publisher = '국민일보';
-           else if (link.includes('munhwa.com')) publisher = '문화일보';
-           else if (link.includes('fnnews.com')) publisher = '파이낸셜뉴스';
-           else if (link.includes('mt.co.kr')) publisher = '머니투데이';
-           else if (link.includes('edaily.co.kr')) publisher = '이데일리';
-           else if (link.includes('asiae.co.kr')) publisher = '아시아경제';
+           // If publisher needs normalization
+           if (publisher === 'MK') publisher = '매일경제';
+           else if (publisher === '조선일보') publisher = '조선일보';
+           else if (publisher === '한겨레') publisher = '한겨레';
+           else if (publisher === '경향신문') publisher = '경향신문';
+           else if (publisher === '동아일보') publisher = '동아일보';
+           else if (publisher === '중앙일보') publisher = '중앙일보';
+           else if (publisher === '한국경제') publisher = '한국경제';
+           else if (publisher === '매일경제') publisher = '매일경제';
+           else if (publisher === '서울경제') publisher = '서울경제';
+           else if (publisher === '한국일보') publisher = '한국일보';
+           else if (publisher === '서울신문') publisher = '서울신문';
+           else if (publisher === '세계일보') publisher = '세계일보';
+           else if (publisher === '국민일보') publisher = '국민일보';
+           else if (publisher === '문화일보') publisher = '문화일보';
+           else if (publisher === '파이낸셜뉴스') publisher = '파이낸셜뉴스';
+           else if (publisher === '머니투데이') publisher = '머니투데이';
+           else if (publisher === '이데일리') publisher = '이데일리';
+           else if (publisher === '아시아경제') publisher = '아시아경제';
 
            if (title.includes('사설')) {
-               if (link === 'https://www.hani.co.kr/arti/opinion' || link === 'https://www.hani.co.kr/arti/opinion/') {
-                   continue; // Skip section top-level pages
-               }
                items.push({
                    id: link,
                    publisher,
