@@ -143,6 +143,21 @@ export default function Editorials() {
     setArticleDetail(null);
   };
 
+  const edgeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = edgeRef.current;
+    if (!el) return;
+    
+    // Prevent default on the left edge completely stops iOS Safari swipe-to-back 
+    const preventEdgeSwipe = (e: TouchEvent) => {
+      e.preventDefault();
+    };
+    
+    el.addEventListener('touchstart', preventEdgeSwipe, { passive: false });
+    return () => el.removeEventListener('touchstart', preventEdgeSwipe);
+  }, [selectedArticle]);
+
   return (
     <>
       <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen relative">
@@ -262,7 +277,14 @@ export default function Editorials() {
             style={{ overscrollBehaviorX: 'none' }}
             className="fixed inset-0 z-50 bg-[#FCFAF7] overflow-y-auto w-full h-full pb-24 touch-pan-y"
           >
-            <header className="sticky top-0 bg-[#FCFAF7]/90 backdrop-blur-sm border-b border-[#EAE4DD] p-4 flex items-center justify-between z-10 w-full mb-6 text-[#1A1A1A]">
+            {/* iOS Safari Edge Swipe Blocker */}
+            <div 
+              ref={edgeRef}
+              className="fixed top-0 left-0 bottom-0 w-4 z-[55]" 
+              style={{ touchAction: 'none' }}
+            />
+
+            <header className="sticky top-0 bg-[#FCFAF7]/90 backdrop-blur-sm border-b border-[#EAE4DD] p-4 flex items-center justify-between z-[60] w-full mb-6 text-[#1A1A1A]">
               <button onClick={closeArticle} className="p-2 -ml-2 rounded-full hover:bg-black/5" aria-label="Go back">
                 <ArrowLeft className="w-6 h-6" />
               </button>
