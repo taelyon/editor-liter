@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import DOMPurify from 'dompurify';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
 
 interface Editorial {
   id: string;
@@ -129,6 +129,12 @@ export default function Editorials() {
         throw new Error(errorData?.error || errorData?.details || 'Failed to load article');
       }
       const data = await res.json();
+      
+      // Clean up content: remove specific unwanted strings like certain emails
+      if (data.content) {
+        data.content = data.content.replace(/editorial@etnews\.com/g, "");
+      }
+      
       setArticleDetail(data);
     } catch (err: any) {
       console.error(err);
@@ -142,6 +148,8 @@ export default function Editorials() {
     setSelectedArticle(null);
     setArticleDetail(null);
   };
+
+  const dragControls = useDragControls();
 
   return (
     <>
@@ -251,12 +259,21 @@ export default function Editorials() {
             exit={{ x: '100%', opacity: 0.5 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200, mass: 0.8 }}
             drag="x"
+            dragListener={false}
+            dragControls={dragControls}
             dragDirectionLock={true}
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={{ left: 0, right: 1 }}
             onDragEnd={(e, { offset, velocity }) => {
               if (offset.x > 80 || velocity.x > 500) {
                 closeArticle();
+              }
+            }}
+            onPointerDown={(e) => {
+              // Trigger drag only if touch starts near the left edge
+              // This mimics iOS back-swipe and leaves the rest for text selection
+              if (e.clientX < 30) {
+                dragControls.start(e);
               }
             }}
             style={{ overscrollBehaviorX: 'none' }}

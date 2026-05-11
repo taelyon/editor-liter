@@ -19,13 +19,20 @@ export default function App() {
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      // Swipe from left edge (within 35px) triggers Safari's back navigation.
-      if (startX < 35 && e.touches.length > 0 && e.touches[0].clientX > startX) {
+      if (e.touches.length === 0) return;
+      
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - startX;
+      
+      // Swipe from left edge (within 20px) triggers Safari's back navigation.
+      // We only prevent it if it's a clear horizontal rightward swipe.
+      if (startX < 20 && deltaX > 5) {
         e.preventDefault();
       }
       
-      // Also optionally block right edge swipe forward navigation
-      if (window.innerWidth - startX < 35 && e.touches.length > 0 && e.touches[0].clientX < startX) {
+      // Right edge swipe forward navigation
+      const deltaXRight = startX - touch.clientX;
+      if (window.innerWidth - startX < 20 && deltaXRight > 5) {
         e.preventDefault();
       }
     };
