@@ -6,6 +6,11 @@
   --font-serif: 'Noto Serif KR', source-serif-pro, Georgia, serif;
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
 @layer utilities {
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
