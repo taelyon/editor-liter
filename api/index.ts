@@ -742,7 +742,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       { publisher: '서울신문', url: 'https://www.seoul.co.kr/news/newsInfo.php?rss=4' },
       { publisher: '동아일보', url: 'https://rss.donga.com/opinion.xml' },
       { publisher: '문화일보', url: 'http://www.munhwa.com/news/rss/opinion.xml' },
-      { publisher: '한국일보', url: 'https://link.hankookilbo.com/rss/opinion/editorials.xml' }
+      { publisher: '한국일보', url: 'https://news.google.com/rss/search?q=site:hankookilbo.com%20%EC%82%AC%EC%84%A4&hl=ko&gl=KR&ceid=KR:ko' },
+      { publisher: '중앙일보', url: 'https://news.google.com/rss/search?q=site:joongang.co.kr%20%EC%82%AC%EC%84%A4&hl=ko&gl=KR&ceid=KR:ko' }
     ];
 
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -775,7 +776,12 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            
            const rawLink = linkMatch ? linkMatch[1].trim() : '';
            const link = cleanUrl(rawLink);
-           const title = titleMatch ? titleMatch[1].trim() : '';
+           let title = titleMatch ? titleMatch[1].trim() : '';
+           
+           // Clean title if it's from a search feed (like Google News)
+           if (title.endsWith(' - ' + f.publisher)) {
+               title = title.substring(0, title.length - (' - ' + f.publisher).length);
+           }
            
            if (!link || !title || seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) {
                continue;
