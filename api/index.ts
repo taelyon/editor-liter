@@ -739,7 +739,10 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       { publisher: '조선일보', url: 'https://www.chosun.com/arc/outboundfeeds/rss/category/opinion/?outputType=xml' },
       { publisher: '한겨레', url: 'https://www.hani.co.kr/rss/opinion/' },
       { publisher: '경향신문', url: 'https://www.khan.co.kr/rss/rssdata/opinion.xml' },
-      { publisher: '서울신문', url: 'https://www.seoul.co.kr/news/newsInfo.php?rss=4' }
+      { publisher: '서울신문', url: 'https://www.seoul.co.kr/news/newsInfo.php?rss=4' },
+      { publisher: '동아일보', url: 'https://rss.donga.com/opinion.xml' },
+      { publisher: '문화일보', url: 'http://www.munhwa.com/news/rss/opinion.xml' },
+      { publisher: '한국일보', url: 'https://link.hankookilbo.com/rss/opinion/editorials.xml' }
     ];
 
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -914,19 +917,19 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
     
     // Flatten and deduplicate
     const finalSeenLinks = new Set<string>();
-    const finalSeenTitles = new Set<string>();
+    const finalSeenTitles = new Set<string>(); // composite: publisher + title
     
     for (const items of results) {
        for (const item of items) {
            const cleanedLink = cleanUrl(item.link);
-           const cleanTitle = item.title.replace(/\s+/g, '');
+           const cleanTitleKey = `${item.publisher}:${item.title.replace(/\s+/g, '')}`;
            
-           if (!finalSeenLinks.has(cleanedLink) && !finalSeenTitles.has(cleanTitle)) {
+           if (!finalSeenLinks.has(cleanedLink) && !finalSeenTitles.has(cleanTitleKey)) {
                item.link = cleanedLink;
                item.id = cleanedLink;
                allItems.push(item);
                finalSeenLinks.add(cleanedLink);
-               finalSeenTitles.add(cleanTitle);
+               finalSeenTitles.add(cleanTitleKey);
            }
        }
     }
@@ -950,16 +953,19 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
 
     const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
     
-    // Filter out old news (older than 24-36h depending on needs) and excluded sources
-    const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'naver.com', 'msn.com', 'zum.com'];
+    // Filter out old news (older than 3-4 days) and problematic redirects
+    const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'msn.com', 'zum.com'];
     
     allItems = allItems.filter(item => {
       const source = (item.publisher || '').toLowerCase();
-      const notExcluded = !excludedSources.some(excluded => item.link.includes(excluded) || source.includes(excluded));
-      const pubKst = new Date(new Date(item.pubDate || '').getTime() + 9 * 60 * 60 * 1000);
-      const isRecent = nowKst.getTime() - pubKst.getTime() <= 72 * 60 * 60 * 1000; // 3 days
+      // Only exclude naver.com if the publisher is unknown or it's clearly a portal-only item
+      // Many publishers today use Naver as their primary search result target
+      const isExcludedLink = excludedSources.some(excluded => item.link.includes(excluded));
       
-      return notExcluded && isRecent && item.mediaType === 'central';
+      const pubKst = new Date(new Date(item.pubDate || '').getTime() + 9 * 60 * 60 * 1000);
+      const isRecent = nowKst.getTime() - pubKst.getTime() <= 96 * 60 * 60 * 1000; // 4 days (slightly wider)
+      
+      return !isExcludedLink && isRecent && item.mediaType === 'central';
     });
 
     allItems.sort((a, b) => {
