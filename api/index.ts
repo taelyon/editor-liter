@@ -701,9 +701,29 @@ app.get(['/api/article', '/article'], async (req, res) => {
   }
 });
 
+function cleanUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    // Remove common tracking parameters
+    const paramsToRemove = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'ref', 'rss', '_s', 'sn', 'service', 'kakao_from'];
+    paramsToRemove.forEach(p => parsed.searchParams.delete(p));
+    
+    // Specific cleanup for Google News redirected URLs
+    if (parsed.hostname === 'news.google.com' && parsed.searchParams.has('oc')) {
+      parsed.searchParams.delete('oc');
+    }
+    
+    return parsed.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
 app.get(['/api/editorials', '/editorials'], async (req, res) => {
   try {
     let allItems: any[] = [];
+    const seenLinks = new Set<string>();
+    const seenTitles = new Set<string>();
     
     const centralMedia = [
       '조선일보', '중앙일보', '동아일보', '한겨레', '경향신문', 
@@ -750,12 +770,17 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
            if (!descMatch) descMatch = itemXml.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i) || itemXml.match(/<content:encoded>([\s\S]*?)<\/content:encoded>/i);
            
+           const rawLink = linkMatch ? linkMatch[1].trim() : '';
+           const link = cleanUrl(rawLink);
            const title = titleMatch ? titleMatch[1].trim() : '';
-           const link = linkMatch ? linkMatch[1].trim() : '';
+           
+           if (!link || !title || seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) {
+               continue;
+           }
            
            let pubDate = pubDateMatch ? pubDateMatch[1].trim() : (dcDateMatch ? dcDateMatch[1].trim() : '');
            if (!pubDate && f.publisher === '한겨레') {
-               const dateMatch = itemXml.match(/\/(202\d)\/(0[1-9]|1[0-2])([0-3][0-9])\//);
+               const dateMatch = rawLink.match(/\/(202\d)\/(0[1-9]|1[0-2])([0-3][0-9])\//);
                if (dateMatch) {
                    pubDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00Z`;
                }
@@ -776,6 +801,10 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
                if (link === 'https://www.hani.co.kr/arti/opinion' || link === 'https://www.hani.co.kr/arti/opinion/') {
                    continue; // Skip section top-level pages
                }
+               
+               seenLinks.add(link);
+               seenTitles.add(title.replace(/\s+/g, ''));
+               
                items.push({
                    id: link,
                    publisher: f.publisher,
@@ -884,10 +913,20 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
     const results = await Promise.all([...feedPromises, bingPromise]);
     
     // Flatten and deduplicate
+    const finalSeenLinks = new Set<string>();
+    const finalSeenTitles = new Set<string>();
+    
     for (const items of results) {
        for (const item of items) {
-           if (!allItems.some(existing => existing.link === item.link || existing.title === item.title)) {
+           const cleanedLink = cleanUrl(item.link);
+           const cleanTitle = item.title.replace(/\s+/g, '');
+           
+           if (!finalSeenLinks.has(cleanedLink) && !finalSeenTitles.has(cleanTitle)) {
+               item.link = cleanedLink;
+               item.id = cleanedLink;
                allItems.push(item);
+               finalSeenLinks.add(cleanedLink);
+               finalSeenTitles.add(cleanTitle);
            }
        }
     }

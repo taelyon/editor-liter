@@ -32,14 +32,36 @@ export default function Editorials() {
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [selectedPublisher, setSelectedPublisher] = useState<string>('all');
 
-  // Use effect to update selectedDate when editorials load if the current selectedDate isn't in the available dates
+  // Use effect to update selectedDate when editorials load for the FIRST time, or if current selection becomes valid again.
+  const isFirstLoad = useRef(true);
+
   useEffect(() => {
     if (editorials.length > 0) {
-      const availableDates = Array.from<string>(new Set(editorials.map(e => format(new Date(e.pubDate), 'yyyy-MM-dd'))));
-      if (!availableDates.includes(selectedDate) && availableDates.length > 0) {
-        // Find the most recent date available
-        availableDates.sort((a, b) => b.localeCompare(a));
-        setSelectedDate(availableDates[0]);
+      const availableDates = Array.from<string>(new Set(editorials.map(e => {
+        try {
+          return format(new Date(e.pubDate), 'yyyy-MM-dd');
+        } catch (err) {
+          return '';
+        }
+      }))).filter(Boolean);
+      
+      availableDates.sort((a, b) => b.localeCompare(a));
+
+      if (isFirstLoad.current) {
+        // On first load, prefer today if available, otherwise most recent
+        const today = format(new Date(), 'yyyy-MM-dd');
+        if (availableDates.includes(today)) {
+          setSelectedDate(today);
+        } else if (availableDates.length > 0) {
+          setSelectedDate(availableDates[0]);
+        }
+        isFirstLoad.current = false;
+      } else {
+        // On refreshes, only jump if the current selectedDate is NOT in availableDates AND we have other dates
+        if (!availableDates.includes(selectedDate) && availableDates.length > 0) {
+          // If we had a date selected but it disappeared, move to the nearest recent
+          setSelectedDate(availableDates[0]);
+        }
       }
     }
   }, [editorials, selectedDate]);
@@ -340,7 +362,7 @@ export default function Editorials() {
 
               {articleDetail && articleDetail.content && (
                 <div 
-                  className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_p:empty]:hidden [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:!mb-6 [&_img]:!mt-2 [&_figure]:!mb-6 [&_figure>img]:!mb-2 [&_figcaption]:!mt-2 [&_figcaption]:!mb-6 [&_figcaption]:text-[15px] [&_figcaption]:text-gray-500 [&_figcaption]:leading-snug [&_em]:block [&_em]:mb-8 [&_em]:not-italic [&_em]:text-[15px] [&_em]:text-gray-500 [&_.img_desc]:block [&_.img_desc]:!mt-2 [&_.img_desc]:mb-6 [&_div:has(>picture)]:!mb-6 [&_div:has(>img)]:!mb-6 [&_a]:text-blue-600 [&_picture]:block [&_picture_img]:!mb-2 [&_.caption]:text-[15px] [&_.caption]:text-gray-500 [&_.caption]:leading-snug [&_.caption]:!mt-2 [&_.caption]:!mb-6"
+                  className="prose prose-stone max-w-none text-[17px] leading-[1.8] font-serif text-[#333] [&_p]:mb-6 [&_p:empty]:hidden [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md [&_img]:!mb-6 [&_img]:!mt-2 [&_figure]:!mb-6 [&_figure>img]:!mb-2 [&_figcaption]:!text-[14px] [&_figcaption]:!text-gray-400 [&_figcaption]:!leading-snug [&_figcaption]:!mt-2 [&_figcaption]:!mb-6 [&_em]:!block [&_em]:!mb-8 [&_em]:!not-italic [&_em]:!text-[14px] [&_em]:!text-gray-400 [&_div:has(>picture)]:!mb-6 [&_div:has(>img)]:!mb-6 [&_a]:text-blue-600 [&_picture]:block [&_picture_img]:!mb-2 [&_[class*='caption']]:!text-[14px] [&_[class*='caption']]:!text-gray-400 [&_[class*='caption']]:!leading-snug [&_[class*='caption']]:!mt-2 [&_[class*='caption']]:!mb-6 [&_[class*='desc']]:!text-[14px] [&_[class*='desc']]:!text-gray-400 [&_[class*='desc']]:!leading-snug [&_[class*='desc']]:!mt-2 [&_[class*='desc']]:!mb-6 [&_.explanation]:!text-[14px] [&_.explanation]:!text-gray-400 [&_.explanation]:!leading-snug [&_.explanation]:!mt-2 [&_.explanation]:!mb-6 [&_.info]:!text-[13px] [&_.info]:!text-gray-400 [&_.credit]:!text-[13px] [&_.credit]:!text-gray-400 [&_.photo-cap]:!text-[14px] [&_.photo-cap]:!text-gray-400 [&_.txt-caption]:!text-[14px] [&_.txt-caption]:!text-gray-400 [&_img+p]:!text-[14px] [&_img+p]:!text-gray-400 [&_img+p]:!leading-snug [&_img+p]:!mt-2 [&_img+p]:!mb-6 [&_div:has(>img)+p]:!text-[14px] [&_div:has(>img)+p]:!text-gray-400 [&_div:has(>img)+p]:!leading-snug [&_div:has(>img)+p]:!mt-2 [&_div:has(>img)+p]:!mb-6 [&_.img-box_p]:!text-[14px] [&_.img-box_p]:!text-gray-400 [&_.img-box_p]:!leading-snug [&_.article-img_p]:!text-[14px] [&_.article-img_p]:!text-gray-400 [&_.article-img_p]:!leading-snug"
                   dangerouslySetInnerHTML={{ 
                     __html: DOMPurify.sanitize(articleDetail.content, {
                       ADD_ATTR: ['referrerpolicy', 'loading', 'data-src', 'data-original', 'org-src', 'data-lazy-src', 'data-actual-src', 'data-alt-src', 'style']
