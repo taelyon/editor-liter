@@ -408,14 +408,14 @@ app.get(['/api/article', '/article'], async (req, res) => {
       // Look for common article containers in Korean news sites
       const selectors = [
         'article', 'main', 'section[class*="article"]', 'div[class*="article"]',
-        '.article_body', '#articleBody', '#articleBodyContents', 
+        '.article_body', '#articleBody', '#articleBodyContents', '#articleText', '#articleContents',
         '.article-body', '.view_con', '.news_body', '#news_body', 
         '.content_area', '#content_area', '[itemprop="articleBody"]',
         '.art_body', '.article_view', '.v_appp', '#article-body', '#article_body',
         '.news_article', '.story-card', 'section.article-body',
         '.article-content', '#article_content', '.par', '.article_txt', '.article_body',
         'div.article_body', '.article-copy', '.art_txt', '.art_con', '.entry-content',
-        '.post-content', '.news-article', '#content', '#main-content'
+        '.post-content', '.news-article', '#content', '#main-content', '.premium_content'
       ];
       
       let mainContent = '';
@@ -856,7 +856,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
                    pubDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00Z`;
                }
            }
-           if (!pubDate) pubDate = new Date().toUTCString();
+           if (!pubDate) pubDate = new Date().toISOString();
            
            let description = descMatch ? descMatch[1].trim() : '';
            description = description
@@ -868,7 +868,10 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
              .replace(/&nbsp;/g, ' ');
            description = description.replace(/<[^>]+>/g, '').trim();
            
-           if (title.includes('사설')) {
+           const isEditorial = title.includes('[사설]') || 
+                               (title.includes('사설') && !title.includes('사설 구급차') && !title.includes('사설 도박') && !title.includes('사설 업체') && !title.includes('사설 학원'));
+           
+           if (isEditorial) {
                if (link === 'https://www.hani.co.kr/arti/opinion' || link === 'https://www.hani.co.kr/arti/opinion/') {
                    continue; // Skip section top-level pages
                }
@@ -901,8 +904,10 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
           signal: AbortSignal.timeout(7000)
         });
         const html = await response.text();
-        // Match JSON blobs that look like article objects
-        const matches = html.match(/\{"articleId":"([^"]+)"[^\}]+\}/g) || [];
+        // Match JSON blobs that look like article objects - improved regex to handle potential nested structures better
+        const matches = html.match(/\{"articleId":"([^"]+)"[\s\S]*?\}\}(?=[,\]]|$)/g) || 
+                        html.match(/\{"articleId":"([^"]+)"[^\}]+\}/g) || [];
+        
         for (const match of matches) {
            if (!match.includes('[사설]') && !match.includes('"bundleTitle":"사설"')) continue;
            if (match.includes('"ranking":')) continue; // Skip popular/ranking items which might be old
@@ -919,16 +924,26 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
               
               if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) continue;
               
-              let pubDate = new Date().toUTCString();
+              let pubDate = new Date().toISOString();
               const deployDtMatch = match.match(/\"deployDt\":\"([^\"]+)\"/);
               if (deployDtMatch) {
-                 const dt = deployDtMatch[1].replace(/\./g, '-').replace(' ', 'T') + ':00Z';
-                 pubDate = new Date(dt).toUTCString();
+                 // The date string like "2026.05.12 00:10" or "2026-05-12 00:10:00" is in KST (UTC+9)
+                 let dtStr = deployDtMatch[1].replace(/\./g, '-').replace(' ', 'T');
+                 if (dtStr.length === 16) dtStr += ':00'; // add seconds if missing
+                 
+                 // If it's already got an offset or Z, use as is, otherwise add +09:00
+                 if (!dtStr.includes('+') && !dtStr.endsWith('Z')) {
+                    dtStr += '+09:00';
+                 }
+                 
+                 // Directly use the ISO string with offset for consistency
+                 pubDate = new Date(dtStr).toISOString();
               } else {
                  const dateMatch = id.match(/^A(202\d{5})/);
                  if (dateMatch) {
                     const dStr = dateMatch[1];
-                    pubDate = `${dStr.substring(0,4)}-${dStr.substring(4,6)}-${dStr.substring(6,8)}T00:00:00Z`;
+                    // Assume midnight KST for ID-based dates
+                    pubDate = new Date(`${dStr.substring(0,4)}-${dStr.substring(4,6)}-${dStr.substring(6,8)}T00:00:00+09:00`).toISOString();
                  }
               }
               
@@ -979,7 +994,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
                  publisher: '중앙일보',
                  title,
                  link,
-                 pubDate: new Date().toUTCString(), // Real date will be fetched inside when viewing
+                 pubDate: new Date().toISOString(), // Real date will be fetched inside when viewing
                  contentSnippet: '',
                  mediaType: 'central'
               });
@@ -1027,7 +1042,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            
            let trackingLink = linkMatch ? linkMatch[1].trim() : '';
            trackingLink = trackingLink.replace(/&amp;/g, '&');
-           const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toUTCString();
+           const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toISOString();
            let description = descMatch ? descMatch[1].trim() : '';
            description = description
              .replace(/&lt;/g, '<')
@@ -1061,7 +1076,10 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            else if (publisher === '이데일리') publisher = '이데일리';
            else if (publisher === '아시아경제') publisher = '아시아경제';
 
-           if (title.includes('사설')) {
+           const isEditorial = title.includes('[사설]') || 
+                               (title.includes('사설') && !title.includes('사설 구급차') && !title.includes('사설 도박') && !title.includes('사설 업체') && !title.includes('사설 학원'));
+           
+           if (isEditorial) {
                items.push({
                    id: link,
                    publisher,
@@ -1117,7 +1135,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         }));
     }
 
-    const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+    const now = new Date();
     
     // Filter out old news (older than 3-4 days) and problematic redirects
     const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'msn.com', 'zum.com'];
@@ -1128,8 +1146,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       // Many publishers today use Naver as their primary search result target
       const isExcludedLink = excludedSources.some(excluded => item.link.includes(excluded));
       
-      const pubKst = new Date(new Date(item.pubDate || '').getTime() + 9 * 60 * 60 * 1000);
-      const isRecent = nowKst.getTime() - pubKst.getTime() <= 96 * 60 * 60 * 1000; // 4 days (slightly wider)
+      const pubDate = new Date(item.pubDate || '');
+      const isRecent = now.getTime() - pubDate.getTime() <= 96 * 60 * 60 * 1000; // 4 days (slightly wider)
       
       return !isExcludedLink && isRecent && item.mediaType === 'central';
     });
