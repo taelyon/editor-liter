@@ -975,12 +975,15 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
           signal: AbortSignal.timeout(7000)
         });
         const html = await response.text();
-        const matches = html.match(/<h[23][^>]*>\s*<a href=\"([^\"]+)\"[^>]*>([\s\S]*?)<\/a>/gi) || [];
-        for (const match of matches) {
-           const extraction = match.match(/href=\"([^\"]+)\"[^>]*>([\s\S]*?)<\/a>/i);
-           if (extraction) {
-              let link = extraction[1].trim();
-              let title = extraction[2].trim().replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
+        const cards = html.split('<li class="card"').slice(1);
+        for (const card of cards) {
+           const linkMatch = card.match(/href=\"([^\"]+)\"/i);
+           const titleMatch = card.match(/<h[23][^>]*>([\s\S]*?)<\/h[23]>/i);
+           const dateMatch = card.match(/<p class=\"date\">([^<]+)<\/p>/i);
+           
+           if (linkMatch && titleMatch) {
+              let link = linkMatch[1].trim();
+              let title = titleMatch[1].trim().replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
               
               if (!link.startsWith('http')) link = 'https://www.joongang.co.kr' + link;
               
@@ -989,12 +992,24 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
               seenLinks.add(link);
               seenTitles.add(title.replace(/\s+/g, ''));
               
+              let pubDate = new Date().toISOString();
+              if (dateMatch) {
+                 const rawDate = dateMatch[1].trim();
+                 // rawDate is usually "YYYY.MM.DD HH:mm"
+                 let dtStr = rawDate.replace(/\./g, '-').replace(' ', 'T');
+                 if (dtStr.length === 16) dtStr += ':00';
+                 if (!dtStr.includes('+') && !dtStr.endsWith('Z')) {
+                    dtStr += '+09:00';
+                 }
+                 pubDate = new Date(dtStr).toISOString();
+              }
+              
               items.push({
                  id: link,
                  publisher: '중앙일보',
                  title,
                  link,
-                 pubDate: new Date().toISOString(), // Real date will be fetched inside when viewing
+                 pubDate,
                  contentSnippet: '',
                  mediaType: 'central'
               });
