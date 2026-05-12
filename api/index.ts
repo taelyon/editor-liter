@@ -125,6 +125,13 @@ app.get(['/api/article', '/article'], async (req, res) => {
       targetUrl = targetUrl.replace('/amp/', '/article/');
     }
     
+    // Use AMP for Hankook Ilbo as it is easier to parse and often contains full text where the main site doesn't
+    if (targetUrl.includes('hankookilbo.com/News/Read/')) {
+      targetUrl = targetUrl.replace('/News/Read/', '/news/article/amp/');
+    } else if (targetUrl.includes('hankookilbo.com/news/article/') && !targetUrl.includes('/amp/')) {
+      targetUrl = targetUrl.replace('/news/article/', '/news/article/amp/');
+    }
+    
     // Hardcoded fix for a known broken DongA Ilbo editorial URL mapping
     if (targetUrl.includes('133895023/2')) {
       targetUrl = targetUrl.replace('133895023/2', '133895383/1');
@@ -798,9 +805,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       { publisher: '경향신문', url: 'https://www.khan.co.kr/rss/rssdata/opinion.xml' },
       { publisher: '서울신문', url: 'https://www.seoul.co.kr/news/newsInfo.php?rss=4' },
       { publisher: '동아일보', url: 'https://rss.donga.com/opinion.xml' },
-      { publisher: '문화일보', url: 'http://www.munhwa.com/news/rss/opinion.xml' },
-      { publisher: '한국일보', url: 'https://news.google.com/rss/search?q=site:hankookilbo.com%20%EC%82%AC%EC%84%A4&hl=ko&gl=KR&ceid=KR:ko' },
-      { publisher: '중앙일보', url: 'https://news.google.com/rss/search?q=site:joongang.co.kr%20%EC%82%AC%EC%84%A4&hl=ko&gl=KR&ceid=KR:ko' }
+      { publisher: '문화일보', url: 'http://www.munhwa.com/news/rss/opinion.xml' }
     ];
 
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -887,6 +892,104 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       }
       return items;
     });
+
+    const hankookilboPromise = (async () => {
+      const items: any[] = [];
+      try {
+        const response = await fetch('https://www.hankookilbo.com/news/opinion/editorial', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          signal: AbortSignal.timeout(7000)
+        });
+        const html = await response.text();
+        // Match JSON blobs that look like article objects
+        const matches = html.match(/\{"articleId":"([^"]+)"[^\}]+\}/g) || [];
+        for (const match of matches) {
+           if (!match.includes('[사설]') && !match.includes('"bundleTitle":"사설"')) continue;
+           if (match.includes('"ranking":')) continue; // Skip popular/ranking items which might be old
+           
+           const idMatch = match.match(/\"articleId\":\"([^\"]+)\"/);
+           const titleMatch = match.match(/\"title\":\"([^\"]+)\"/);
+           if (idMatch && titleMatch) {
+              const id = idMatch[1];
+              let title = titleMatch[1];
+              
+              // unicode decode
+              title = title.replace(/\\u([0-9a-fA-F]{4})/g, (m, c) => String.fromCharCode(parseInt(c, 16)));
+              const link = `https://www.hankookilbo.com/News/Read/${id}`;
+              
+              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) continue;
+              
+              let pubDate = new Date().toUTCString();
+              const deployDtMatch = match.match(/\"deployDt\":\"([^\"]+)\"/);
+              if (deployDtMatch) {
+                 const dt = deployDtMatch[1].replace(/\./g, '-').replace(' ', 'T') + ':00Z';
+                 pubDate = new Date(dt).toUTCString();
+              } else {
+                 const dateMatch = id.match(/^A(202\d{5})/);
+                 if (dateMatch) {
+                    const dStr = dateMatch[1];
+                    pubDate = `${dStr.substring(0,4)}-${dStr.substring(4,6)}-${dStr.substring(6,8)}T00:00:00Z`;
+                 }
+              }
+              
+              seenLinks.add(link);
+              seenTitles.add(title.replace(/\s+/g, ''));
+              
+              items.push({
+                 id: link,
+                 publisher: '한국일보',
+                 title,
+                 link,
+                 pubDate,
+                 contentSnippet: '',
+                 mediaType: 'central'
+              });
+           }
+        }
+      } catch(err) {
+        console.error('Failed to fetch Hankookilbo:', err);
+      }
+      return items;
+    })();
+
+    const joongangPromise = (async () => {
+      const items: any[] = [];
+      try {
+        const response = await fetch('https://www.joongang.co.kr/opinion/editorial', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          signal: AbortSignal.timeout(7000)
+        });
+        const html = await response.text();
+        const matches = html.match(/<h[23][^>]*>\s*<a href=\"([^\"]+)\"[^>]*>([\s\S]*?)<\/a>/gi) || [];
+        for (const match of matches) {
+           const extraction = match.match(/href=\"([^\"]+)\"[^>]*>([\s\S]*?)<\/a>/i);
+           if (extraction) {
+              let link = extraction[1].trim();
+              let title = extraction[2].trim().replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
+              
+              if (!link.startsWith('http')) link = 'https://www.joongang.co.kr' + link;
+              
+              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) continue;
+              
+              seenLinks.add(link);
+              seenTitles.add(title.replace(/\s+/g, ''));
+              
+              items.push({
+                 id: link,
+                 publisher: '중앙일보',
+                 title,
+                 link,
+                 pubDate: new Date().toUTCString(), // Real date will be fetched inside when viewing
+                 contentSnippet: '',
+                 mediaType: 'central'
+              });
+           }
+        }
+      } catch(err) {
+        console.error('Failed to fetch Joongang:', err);
+      }
+      return items;
+    })();
 
     const bingPromise = (async () => {
       const items: any[] = [];
@@ -976,7 +1079,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       return items;
     })();
 
-    const results = await Promise.all([...feedPromises, bingPromise]);
+    const results = await Promise.all([...feedPromises, hankookilboPromise, joongangPromise, bingPromise]);
     
     // Flatten and deduplicate
     const finalSeenLinks = new Set<string>();
