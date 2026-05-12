@@ -676,6 +676,63 @@ app.get(['/api/article', '/article'], async (req, res) => {
         adContainer.remove();
     });
     
+    // Explicitly identify and tag image captions
+    cleanDocument.querySelectorAll('img').forEach(img => {
+        const isCaption = (text: string) => {
+           if (!text) return false;
+           text = text.trim();
+           // Remove quotes to check actual sentence structure
+           const cleanTextForCheck = text.replace(/['"“”‘’]/g, '');
+           if (text.length === 0 || text.length > 200) return false; // Captions shouldn't be too long
+           
+           // Journalism picture sources
+           if (text.includes('제공') || text.includes('사진=') || text.includes('사진 =') || 
+               text.includes('출처') || text.includes('캡처') || text.includes('포토뉴스') || 
+               text.includes('연합뉴스') || text.includes('뉴시스') || text.includes('뉴스1') ||
+               text.includes('게티이미지') || text.includes('기자 =') || text.includes('기자=') ||
+               /사진\s*픽사베이/.test(text) || /사진\s*로이터/.test(text) || /사진\s*AP/.test(text)) {
+               return true;
+           }
+           
+           // If it's short and doesn't end formally like an editorial paragraph does, it's likely a caption
+           if (text.length < 90 && !cleanTextForCheck.endsWith('다.') && !cleanTextForCheck.endsWith('다')) {
+               return true;
+           }
+           return false;
+        };
+
+        // Check direct siblings
+        let next = img.nextElementSibling;
+        while (next && ['BR'].includes(next.tagName)) {
+           next = next.nextElementSibling;
+        }
+        if (next && ['P', 'DIV', 'SPAN', 'FIGCAPTION', 'EM'].includes(next.tagName)) {
+            if (isCaption(next.textContent || '')) {
+                next.classList.add('custom-photo-caption');
+            }
+        }
+        
+        // Check wrapper siblings
+        const parent = img.parentElement;
+        if (parent && ['PICTURE', 'DIV', 'FIGURE', 'SPAN', 'P'].includes(parent.tagName)) {
+            // For some wrappers like FIGURE, the figcaption is inside
+            if (parent.tagName === 'FIGURE') {
+                const figcap = parent.querySelector('figcaption');
+                if (figcap) figcap.classList.add('custom-photo-caption');
+            }
+
+            let pNext = parent.nextElementSibling;
+            while (pNext && ['BR'].includes(pNext.tagName)) {
+               pNext = pNext.nextElementSibling;
+            }
+            if (pNext && ['P', 'DIV', 'SPAN', 'FIGCAPTION', 'EM'].includes(pNext.tagName)) {
+                if (isCaption(pNext.textContent || '')) {
+                    pNext.classList.add('custom-photo-caption');
+                }
+            }
+        }
+    });
+    
     let finalContent = cleanDocument.body?.innerHTML || article.content;
     
     // Explicitly remove specific copyright text patterns (including HTML tags inside)
