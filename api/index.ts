@@ -5,6 +5,7 @@ import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import iconv from 'iconv-lite';
 import { GoogleGenAI } from '@google/genai';
+import * as cheerio from 'cheerio';
 
 const fallbackClassicsData = [
   {
@@ -92,40 +93,41 @@ app.get(['/api/article', '/article'], async (req, res) => {
     let targetUrl = url;
     if (url.includes('news.google.com')) {
       // First try standard decoding
-      const decoded = await decoder.decode(url).catch(() => ({ status: false }));
-      if (decoded && decoded.status && decoded.decoded_url) {
-        targetUrl = decoded.decoded_url;
-      } else {
-        // Fallback: extract base64 segment and decode url
-        const match = url.match(/\/articles\/([a-zA-Z0-9_\-\=]+)/);
-        if (match && match[1]) {
-          try {
+      try {
+        const decoded = await decoder.decode(url).catch(() => ({ status: false }));
+        if (decoded && decoded.status && decoded.decoded_url) {
+          targetUrl = decoded.decoded_url;
+          console.log('Standard decoded URL:', targetUrl);
+        } else {
+          // Fallback: extract base64 segment and decode url
+          const match = url.match(/\/articles\/([a-zA-Z0-9_\-\=]+)/);
+          if (match && match[1]) {
             const base64Str = match[1];
-            // Sometimes it's base64url, so replace - with + and _ with /
             const normalizedBase64 = base64Str.replace(/-/g, '+').replace(/_/g, '/');
-            const decodedStr = Buffer.from(normalizedBase64, 'base64').toString('utf-8');
-            const extracted = decodedStr.match(/https?:\/\/[a-zA-Z0-9_\-\.\/\?\=\&\%]+/)?.[0];
-            if (extracted) {
-              targetUrl = extracted;
+            const buffer = Buffer.from(normalizedBase64, 'base64');
+            const decodedStr = buffer.toString('utf-8');
+            
+            // Try to find a URL in the decoded string (even if it's protobuf-garbage-mixed)
+            const urlMatch = decodedStr.match(/https?:\/\/[a-zA-Z0-9_\-\.\/\?\=\&\%]+/);
+            if (urlMatch) {
+              targetUrl = urlMatch[0];
               console.log('Fallback extracted URL:', targetUrl);
             } else {
-              console.log('Fallback extract failed string:', decodedStr);
+              console.log('Fallback extract failed to find URL in decoded segment.');
             }
-          } catch (e) {
-            console.error('Fallback URL extract failed', e);
           }
-        } else {
-          console.log('Regex match failed for URLs:', url);
         }
+      } catch (e) {
+        console.error('Google News decoding error:', e);
       }
     }
     
-    // Convert Donga AMP URLs to generic article URLs as AMP is discontinued/broken for some articles
+    // Convert Donga AMP URLs to generic article URLs
     if (targetUrl.includes('donga.com/news/amp/')) {
       targetUrl = targetUrl.replace('/amp/', '/article/');
     }
     
-    // Use AMP for Hankook Ilbo as it is easier to parse and often contains full text where the main site doesn't
+    // Use AMP for Hankook Ilbo
     if (targetUrl.includes('hankookilbo.com/News/Read/')) {
       targetUrl = targetUrl.replace('/News/Read/', '/news/article/amp/');
     } else if (targetUrl.includes('hankookilbo.com/news/article/') && !targetUrl.includes('/amp/')) {
@@ -139,13 +141,46 @@ app.get(['/api/article', '/article'], async (req, res) => {
 
     console.log('Fetching target URL:', targetUrl);
 
-    const response = await fetch(targetUrl, {
+    let response = await fetch(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
-      }
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(25000)
     });
+
+    // Check if we got a Google News redirect page instead of the article
+    if (response.url.includes('news.google.com') || targetUrl.includes('news.google.com')) {
+      const initialHtml = await response.text();
+      // Look for meta refresh or JS redirect
+      const metaMatch = initialHtml.match(/<meta[^>]+refresh[^>]+url=([^"'>]+)/i) || 
+                        initialHtml.match(/window\.location\.replace\("([^"]+)"\)/i) ||
+                        initialHtml.match(/url:\s*'([^']+)'/i);
+      
+      if (metaMatch && metaMatch[1]) {
+        let nextUrl = metaMatch[1].trim();
+        if (nextUrl.startsWith('./')) nextUrl = new URL(nextUrl, response.url).href;
+        console.log('Following meta-refresh to:', nextUrl);
+        targetUrl = nextUrl;
+        response = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          },
+          signal: AbortSignal.timeout(25000)
+        });
+      } else {
+        // If we already called text() but found no redirect, we have a problem because we need arrayBuffer for iconv-lite
+        // Re-fetch to get a fresh stream if we aren't following a redirect
+        response = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          },
+          signal: AbortSignal.timeout(25000)
+        });
+      }
+    }
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -412,10 +447,11 @@ app.get(['/api/article', '/article'], async (req, res) => {
         '.article-body', '.view_con', '.news_body', '#news_body', 
         '.content_area', '#content_area', '[itemprop="articleBody"]',
         '.art_body', '.article_view', '.v_appp', '#article-body', '#article_body',
-        '.news_article', '.story-card', 'section.article-body',
+        '.news_article', '.story-card', 'section.article-body', '.story_list',
         '.article-content', '#article_content', '.par', '.article_txt', '.article_body',
         'div.article_body', '.article-copy', '.art_txt', '.art_con', '.entry-content',
-        '.post-content', '.news-article', '#content', '#main-content', '.premium_content'
+        '.post-content', '.news-article', '#content', '#main-content', '.premium_content',
+        '.article-view', '.article_view_body', '.article_txt_content', '#dm_news_content'
       ];
       
       let mainContent = '';
@@ -805,7 +841,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       { publisher: '경향신문', url: 'https://www.khan.co.kr/rss/rssdata/opinion.xml' },
       { publisher: '서울신문', url: 'https://www.seoul.co.kr/news/newsInfo.php?rss=4' },
       { publisher: '동아일보', url: 'https://rss.donga.com/opinion.xml' },
-      { publisher: '문화일보', url: 'http://www.munhwa.com/news/rss/opinion.xml' }
+      { publisher: '문화일보', url: 'http://www.munhwa.com/news/rss/opinion.xml' },
+      { publisher: '한국경제', url: 'https://rss.hankyung.com/new/news_opinion.xml' }
     ];
 
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -816,7 +853,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       try {
         const response = await fetch(f.url, {
            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-           signal: AbortSignal.timeout(7000)
+           signal: AbortSignal.timeout(25000)
         });
         const buffer = await response.arrayBuffer();
         
@@ -901,15 +938,13 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       try {
         const response = await fetch('https://www.hankookilbo.com/news/opinion/editorial', {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-          signal: AbortSignal.timeout(7000)
+          signal: AbortSignal.timeout(25000)
         });
         const html = await response.text();
-        // Match JSON blobs that look like article objects - improved regex to handle potential nested structures better
-        const matches = html.match(/\{"articleId":"([^"]+)"[\s\S]*?\}\}(?=[,\]]|$)/g) || 
-                        html.match(/\{"articleId":"([^"]+)"[^\}]+\}/g) || [];
+        // Find JSON objects representing editorial articles
+        const matches = html.match(/\{"articleId":"([^"]+)"(?:(?!\{).)*?\[사설\](?:(?!\{).)*?\}/g) || [];
         
         for (const match of matches) {
-           if (!match.includes('[사설]') && !match.includes('"bundleTitle":"사설"')) continue;
            if (match.includes('"ranking":')) continue; // Skip popular/ranking items which might be old
            
            const idMatch = match.match(/\"articleId\":\"([^\"]+)\"/);
@@ -939,11 +974,9 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
                  // Directly use the ISO string with offset for consistency
                  pubDate = new Date(dtStr).toISOString();
               } else {
-                 const dateMatch = id.match(/^A(202\d{5})/);
+                 const dateMatch = id.match(/^A(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
                  if (dateMatch) {
-                    const dStr = dateMatch[1];
-                    // Assume midnight KST for ID-based dates
-                    pubDate = new Date(`${dStr.substring(0,4)}-${dStr.substring(4,6)}-${dStr.substring(6,8)}T00:00:00+09:00`).toISOString();
+                    pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T${dateMatch[4]}:${dateMatch[5]}:${dateMatch[6]}+09:00`).toISOString();
                  }
               }
               
@@ -972,7 +1005,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       try {
         const response = await fetch('https://www.joongang.co.kr/opinion/editorial', {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-          signal: AbortSignal.timeout(7000)
+          signal: AbortSignal.timeout(25000)
         });
         const html = await response.text();
         const cards = html.split('<li class="card"').slice(1);
@@ -1021,98 +1054,261 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       return items;
     })();
 
-    const bingPromise = (async () => {
+    const dongaPromise = (async () => {
       const items: any[] = [];
       try {
-        const bingUrl = 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+when:3d&hl=ko&gl=KR&ceid=KR:ko';
-        const bingResponse = await fetch(bingUrl, {
-           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-           signal: AbortSignal.timeout(5000)
+        const response = await fetch('https://www.donga.com/news/Series/70040100000001', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          signal: AbortSignal.timeout(25000)
         });
-        const text = await bingResponse.text();
-        
-        const localRegex = /<item>([\s\S]*?)<\/item>/gi;
-        let match;
-        while ((match = localRegex.exec(text)) !== null) {
-           const itemXml = match[1];
-           const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
-           const linkMatch = itemXml.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || itemXml.match(/<link>([\s\S]*?)<\/link>/i);
-           const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
-           const sourceMatch = itemXml.match(/<source[^>]*>([\s\S]*?)<\/source>/i);
-           let descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
-           
-           let title = titleMatch ? titleMatch[1].trim() : '';
-           title = title
-              .replace(/&#183;/g, '·')
-              .replace(/&lt;/g, '<')
-              .replace(/&gt;/g, '>')
-              .replace(/&quot;/g, '"')
-              .replace(/&apos;/g, "'")
-              .replace(/&amp;/g, '&');
+        const html = await response.text();
+        const $ = cheerio.load(html);
+        $('a').each((i, el) => {
+           let title = $(el).text().trim();
+           let link = $(el).attr('href');
+           if (title && title.includes('사설') && link) {
+              if (title === '사설') return; // Skip generic ones
+              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
+              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
+              seenLinks.add(link);
+              seenTitles.add(title.replace(/\s+/g, ''));
               
-           let publisherNameInner = sourceMatch ? sourceMatch[1].trim() : '';
-           if (publisherNameInner && title.endsWith(' - ' + publisherNameInner)) {
-               title = title.substring(0, title.length - (' - ' + publisherNameInner).length);
+              let pubDate = new Date().toISOString();
+              const dateMatch = link.match(/\/(\d{4})(\d{2})(\d{2})\//);
+              if (dateMatch) {
+                  pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00+09:00`).toISOString();
+              }
+              
+              items.push({
+                 id: link,
+                 publisher: '동아일보',
+                 title,
+                 link,
+                 pubDate,
+                 contentSnippet: '',
+                 mediaType: 'central'
+              });
            }
-           
-           let trackingLink = linkMatch ? linkMatch[1].trim() : '';
-           trackingLink = trackingLink.replace(/&amp;/g, '&');
-           const pubDate = pubDateMatch ? pubDateMatch[1].trim() : new Date().toISOString();
-           let description = descMatch ? descMatch[1].trim() : '';
-           description = description
-             .replace(/&lt;/g, '<')
-             .replace(/&gt;/g, '>')
-             .replace(/&quot;/g, '"')
-             .replace(/&apos;/g, "'")
-             .replace(/&amp;/g, '&')
-             .replace(/&nbsp;/g, ' ');
-           description = description.replace(/<[^>]+>/g, '').trim();
-           
-           let link = trackingLink;
-           let publisher = sourceMatch ? sourceMatch[1].trim() : '종합 일간지';
-           
-           // If publisher needs normalization
-           if (publisher === 'MK') publisher = '매일경제';
-           else if (publisher === '조선일보') publisher = '조선일보';
-           else if (publisher === '한겨레') publisher = '한겨레';
-           else if (publisher === '경향신문') publisher = '경향신문';
-           else if (publisher === '동아일보') publisher = '동아일보';
-           else if (publisher === '중앙일보') publisher = '중앙일보';
-           else if (publisher === '한국경제') publisher = '한국경제';
-           else if (publisher === '매일경제') publisher = '매일경제';
-           else if (publisher === '서울경제') publisher = '서울경제';
-           else if (publisher === '한국일보') publisher = '한국일보';
-           else if (publisher === '서울신문') publisher = '서울신문';
-           else if (publisher === '세계일보') publisher = '세계일보';
-           else if (publisher === '국민일보') publisher = '국민일보';
-           else if (publisher === '문화일보') publisher = '문화일보';
-           else if (publisher === '파이낸셜뉴스') publisher = '파이낸셜뉴스';
-           else if (publisher === '머니투데이') publisher = '머니투데이';
-           else if (publisher === '이데일리') publisher = '이데일리';
-           else if (publisher === '아시아경제') publisher = '아시아경제';
-
-           const isEditorial = title.includes('[사설]') || 
-                               (title.includes('사설') && !title.includes('사설 구급차') && !title.includes('사설 도박') && !title.includes('사설 업체') && !title.includes('사설 학원'));
-           
-           if (isEditorial) {
-               items.push({
-                   id: link,
-                   publisher,
-                   title,
-                   link,
-                   pubDate,
-                   contentSnippet: description.length > 200 ? description.substring(0, 200) + '...' : description,
-                   mediaType: centralMedia.includes(publisher) ? 'central' : 'local'
-               });
-           }
-        }
-      } catch (err) {
-        console.error('Failed to fetch Bing News RSS:', err);
+        });
+      } catch(err) {
+        console.error('Failed to fetch Donga:', err);
       }
       return items;
     })();
 
-    const results = await Promise.all([...feedPromises, hankookilboPromise, joongangPromise, bingPromise]);
+    const khanPromise = (async () => {
+      const items: any[] = [];
+      try {
+        const response = await fetch('https://www.khan.co.kr/opinion/editorial/articles', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          signal: AbortSignal.timeout(25000)
+        });
+        const html = await response.text();
+        const $ = cheerio.load(html);
+        $('a').each((i, el) => {
+           let title = $(el).text().trim();
+           let link = $(el).attr('href');
+           if (title && title.includes('사설') && link) {
+              if (title === '사설') return;
+              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
+              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
+              seenLinks.add(link);
+              seenTitles.add(title.replace(/\s+/g, ''));
+              
+              let pubDate = new Date().toISOString();
+              const dateMatch = link.match(/\/article\/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
+              if (dateMatch) {
+                  pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T${dateMatch[4]}:${dateMatch[5]}:${dateMatch[6]}+09:00`).toISOString();
+              } else {
+                  const backupMatch = link.match(/\/article\/(\d{4})(\d{2})(\d{2})/);
+                  if (backupMatch) {
+                      pubDate = new Date(`${backupMatch[1]}-${backupMatch[2]}-${backupMatch[3]}T00:00:00+09:00`).toISOString();
+                  }
+              }
+              
+              items.push({
+                 id: link,
+                 publisher: '경향신문',
+                 title,
+                 link,
+                 pubDate,
+                 contentSnippet: '',
+                 mediaType: 'central'
+              });
+           }
+        });
+      } catch(err) {
+        console.error('Failed to fetch Khan:', err);
+      }
+      return items;
+    })();
+
+    const hankyungPromise = (async () => {
+      const items: any[] = [];
+      try {
+        const response = await fetch('https://www.hankyung.com/opinion/editorial', {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(25000)
+        });
+        const html = await response.text();
+        const $ = cheerio.load(html);
+        $('a').each((i, el) => {
+           let title = $(el).text().trim();
+           let link = $(el).attr('href');
+           if (title && title.includes('사설') && link) {
+              if (title === '사설') return;
+              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
+              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
+              seenLinks.add(link);
+              seenTitles.add(title.replace(/\s+/g, ''));
+              items.push({
+                 id: link,
+                 publisher: '한국경제',
+                 title,
+                 link,
+                 pubDate: new Date().toISOString(),
+                 contentSnippet: '',
+                 mediaType: 'economy'
+              });
+           }
+        });
+      } catch(err) {
+        console.error('Failed to fetch Hankyung:', err);
+      }
+      return items;
+    })();
+
+    const munhwaPromise = (async () => {
+      const items: any[] = [];
+      try {
+        const response = await fetch('https://www.munhwa.com/news/series.html?secode=11', {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(25000)
+        });
+        const html = await response.text();
+        const $ = cheerio.load(html);
+        $('a').each((i, el) => {
+           let title = $(el).text().trim();
+           let link = $(el).attr('href');
+           if (title && title.includes('사설') && link) {
+              if (title === '사설') return;
+              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
+              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
+              seenLinks.add(link);
+              seenTitles.add(title.replace(/\s+/g, ''));
+              
+              let pubDate = new Date().toISOString();
+              const dateMatch = link.match(/no=(\d{4})(\d{2})(\d{2})/);
+              if (dateMatch) {
+                  pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00+09:00`).toISOString();
+              }
+              
+              items.push({
+                 id: link,
+                 publisher: '문화일보',
+                 title,
+                 link,
+                 pubDate,
+                 contentSnippet: '',
+                 mediaType: 'central'
+              });
+           }
+        });
+      } catch(err) {
+        console.error('Failed to fetch Munhwa:', err);
+      }
+      return items;
+    })();
+
+    const seoulPromise = (async () => {
+      const items: any[] = [];
+      try {
+        const response = await fetch('https://www.seoul.co.kr/newsList/editOpinion/editorial/', {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(25000)
+        });
+        const html = await response.text();
+        const $ = cheerio.load(html);
+        $('a').each((i, el) => {
+           let title = $(el).text().trim() || $(el).attr('title')?.trim() || '';
+           let link = $(el).attr('href');
+           if (title && title.includes('사설') && link) {
+              if (title === '사설') return;
+              if (link.startsWith('/')) link = 'https://www.seoul.co.kr' + link;
+              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
+              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
+              seenLinks.add(link);
+              seenTitles.add(title.replace(/\s+/g, ''));
+              
+              let pubDate = new Date().toISOString();
+              const dateMatch = link.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//);
+              if (dateMatch) {
+                  pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00+09:00`).toISOString();
+              }
+              
+              items.push({
+                 id: link,
+                 publisher: '서울신문',
+                 title,
+                 link,
+                 pubDate,
+                 contentSnippet: '',
+                 mediaType: 'central'
+              });
+           }
+        });
+      } catch(err) {
+        console.error('Failed to fetch Seoul:', err);
+      }
+      return items;
+    })();
+
+    const mkPromise = (async () => {
+      const items: any[] = [];
+      try {
+        const response = await fetch('https://www.mk.co.kr/opinion/editorial/', {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(25000)
+        });
+        const html = await response.text();
+        const $ = cheerio.load(html);
+        $('a').each((i, el) => {
+           let title = $(el).text().trim() || $(el).attr('title')?.trim() || '';
+           let link = $(el).attr('href');
+           if (title && title.includes('사설') && link && link.includes('mk.co.kr')) {
+              title = title.split('\n')[0].replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
+              if (title === '사설') return;
+              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
+              seenLinks.add(link);
+              seenTitles.add(title.replace(/\s+/g, ''));
+              items.push({
+                 id: link,
+                 publisher: '매일경제',
+                 title,
+                 link,
+                 pubDate: new Date().toISOString(),
+                 contentSnippet: '',
+                 mediaType: 'economy'
+              });
+           }
+        });
+      } catch(err) {
+        console.error('Failed to fetch MK:', err);
+      }
+      return items;
+    })();
+
+    const results = await Promise.all([
+        ...feedPromises, 
+        hankookilboPromise, 
+        joongangPromise, 
+        dongaPromise, 
+        khanPromise,
+        hankyungPromise,
+        munhwaPromise,
+        seoulPromise,
+        mkPromise
+    ]);
     
     // Flatten and deduplicate
     const finalSeenLinks = new Set<string>();
@@ -1138,7 +1334,10 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
     if (haniItemsToFix.length > 0) {
         await Promise.allSettled(haniItemsToFix.map(async (item) => {
             try {
-                const res = await fetch(item.link);
+                const res = await fetch(item.link, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                    signal: AbortSignal.timeout(10000)
+                });
                 const text = await res.text();
                 const match = text.match(/article:published_time["']?\s*content=["']([^"']+)["']/i);
                 if (match && match[1]) {
