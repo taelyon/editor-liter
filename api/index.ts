@@ -819,6 +819,19 @@ function cleanUrl(url: string): string {
   }
 }
 
+function isValidEditorialTitle(title: string): boolean {
+  if (!title || !title.includes('사설')) return false;
+  if (title.includes('[사설]') || title.includes('사설]') || title.includes('[사설') || title.startsWith('사설 ')) return true;
+  const exclusions = [
+    '사설업체', '사설 업체', '사설구급차', '사설 구급차', '사설도박', '사설 도박', 
+    '사설학원', '사설 학원', '사설망', '사설탐정', '사설토토', '사설서버', '사설수리'
+  ];
+  for (const ex of exclusions) {
+      if (title.includes(ex)) return false;
+  }
+  return true;
+}
+
 app.get(['/api/editorials', '/editorials'], async (req, res) => {
   try {
     let allItems: any[] = [];
@@ -842,7 +855,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       { publisher: '서울신문', url: 'https://www.seoul.co.kr/news/newsInfo.php?rss=4' },
       { publisher: '동아일보', url: 'https://rss.donga.com/opinion.xml' },
       { publisher: '문화일보', url: 'http://www.munhwa.com/news/rss/opinion.xml' },
-      { publisher: '한국경제', url: 'https://rss.hankyung.com/new/news_opinion.xml' }
+      { publisher: '한국경제', url: 'https://www.hankyung.com/feed/opinion' },
+      { publisher: '서울경제', url: 'https://www.sedaily.com/rss/Opinion' }
     ];
 
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -905,8 +919,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
              .replace(/&nbsp;/g, ' ');
            description = description.replace(/<[^>]+>/g, '').trim();
            
-           const isEditorial = title.includes('[사설]') || 
-                               (title.includes('사설') && !title.includes('사설 구급차') && !title.includes('사설 도박') && !title.includes('사설 업체') && !title.includes('사설 학원'));
+           const isEditorial = isValidEditorialTitle(title);
            
            if (isEditorial) {
                if (link === 'https://www.hani.co.kr/arti/opinion' || link === 'https://www.hani.co.kr/arti/opinion/') {
@@ -1066,7 +1079,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         $('a').each((i, el) => {
            let title = $(el).text().trim();
            let link = $(el).attr('href');
-           if (title && title.includes('사설') && link) {
+           if (title && isValidEditorialTitle(title) && link) {
+              if (link.startsWith('/')) link = 'https://www.donga.com' + link;
               if (title === '사설') return; // Skip generic ones
               title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
               if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
@@ -1108,7 +1122,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         $('a').each((i, el) => {
            let title = $(el).text().trim();
            let link = $(el).attr('href');
-           if (title && title.includes('사설') && link) {
+           if (title && isValidEditorialTitle(title) && link) {
+              if (link.startsWith('/')) link = 'https://www.khan.co.kr' + link;
               if (title === '사설') return;
               title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
               if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
@@ -1155,7 +1170,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         $('a').each((i, el) => {
            let title = $(el).text().trim();
            let link = $(el).attr('href');
-           if (title && title.includes('사설') && link) {
+           if (title && isValidEditorialTitle(title) && link) {
+              if (link.startsWith('/')) link = 'https://www.hankyung.com' + link;
               if (title === '사설') return;
               title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
               if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
@@ -1168,7 +1184,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
                  link,
                  pubDate: new Date().toISOString(),
                  contentSnippet: '',
-                 mediaType: 'economy'
+                 mediaType: 'central'
               });
            }
         });
@@ -1181,7 +1197,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
     const munhwaPromise = (async () => {
       const items: any[] = [];
       try {
-        const response = await fetch('https://www.munhwa.com/news/series.html?secode=11', {
+        const response = await fetch('https://www.munhwa.com/opinion/editorial', {
           headers: { 'User-Agent': 'Mozilla/5.0' },
           signal: AbortSignal.timeout(25000)
         });
@@ -1190,7 +1206,8 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         $('a').each((i, el) => {
            let title = $(el).text().trim();
            let link = $(el).attr('href');
-           if (title && title.includes('사설') && link) {
+           if (title && isValidEditorialTitle(title) && link) {
+              if (link.startsWith('/')) link = 'https://www.munhwa.com' + link;
               if (title === '사설') return;
               title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
               if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
@@ -1232,7 +1249,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         $('a').each((i, el) => {
            let title = $(el).text().trim() || $(el).attr('title')?.trim() || '';
            let link = $(el).attr('href');
-           if (title && title.includes('사설') && link) {
+           if (title && isValidEditorialTitle(title) && link) {
               if (title === '사설') return;
               if (link.startsWith('/')) link = 'https://www.seoul.co.kr' + link;
               title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
@@ -1275,7 +1292,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         $('a').each((i, el) => {
            let title = $(el).text().trim() || $(el).attr('title')?.trim() || '';
            let link = $(el).attr('href');
-           if (title && title.includes('사설') && link && link.includes('mk.co.kr')) {
+           if (title && isValidEditorialTitle(title) && link && link.includes('mk.co.kr')) {
               title = title.split('\n')[0].replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
               if (title === '사설') return;
               if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
@@ -1288,7 +1305,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
                  link,
                  pubDate: new Date().toISOString(),
                  contentSnippet: '',
-                 mediaType: 'economy'
+                 mediaType: 'central'
               });
            }
         });
@@ -1329,22 +1346,41 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
        }
     }
 
-    // Attempt to fetch actual pubDate for 한겨레 articles if needed
-    const haniItemsToFix = allItems.filter(item => item.publisher === '한겨레');
-    if (haniItemsToFix.length > 0) {
-        await Promise.allSettled(haniItemsToFix.map(async (item) => {
+    // Attempt to fetch actual pubDate for specific articles that might lack precise time or are known to need meta tag extraction
+    const itemsToFix = allItems.filter(item => 
+        ['서울신문', '동아일보', '경향신문', '문화일보', '한국경제', '매일경제', '한겨레'].includes(item.publisher) || 
+        item.pubDate.includes('T00:00:00')
+    );
+    if (itemsToFix.length > 0) {
+        await Promise.allSettled(itemsToFix.map(async (item) => {
             try {
                 const res = await fetch(item.link, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
                     signal: AbortSignal.timeout(10000)
                 });
                 const text = await res.text();
-                const match = text.match(/article:published_time["']?\s*content=["']([^"']+)["']/i);
-                if (match && match[1]) {
-                    item.pubDate = match[1];
+                // Prefer modified_time, fallback to published_time
+                const modMatch = text.match(/article:modified_time["']?\s*content=["']([^"']+)["']/i);
+                const pubMatch = text.match(/article:published_time["']?\s*content=["']([^"']+)["']/i);
+                
+                // Backup for basic date formats found in HTML if meta tags are missing
+                const dateRegex = /202[0-9][-.\/][0-1][0-9][-.\/][0-3][0-9][\sT][0-2][0-9]:[0-5][0-9]/;
+                
+                if (modMatch && modMatch[1]) {
+                    item.pubDate = new Date(modMatch[1]).toISOString();
+                } else if (pubMatch && pubMatch[1]) {
+                    item.pubDate = new Date(pubMatch[1]).toISOString();
+                } else {
+                    const fallbackMatch = text.match(dateRegex);
+                    if (fallbackMatch && fallbackMatch[0]) {
+                        let parsedDate = fallbackMatch[0].replace(/[-.\/]/g, '-').replace(' ', 'T');
+                        if (parsedDate.length === 16) parsedDate += ':00'; // Add seconds
+                        if (!parsedDate.includes('+') && !parsedDate.endsWith('Z')) parsedDate += '+09:00';
+                        item.pubDate = new Date(parsedDate).toISOString();
+                    }
                 }
             } catch (e: any) {
-                console.error('Failed to fetch HanKyoReh original date:', e.message);
+                // Silently ignore individual fetch failures to avoid spamming logs, use fallback date
             }
         }));
     }
