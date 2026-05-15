@@ -330,9 +330,11 @@ export default function Editorials() {
                         : format(new Date(articleDetail.updatedAt), 'yyyy-MM-dd HH:mm');
                       
                       if (pubDateStr !== updateDateStr) {
+                        const isSpecificUpdate = articleDetail.timeType === '수정' || articleDetail.timeType === '업데이트';
+                        const prefix = isSpecificUpdate ? articleDetail.timeType : '업데이트';
                         return (
                           <span>
-                            {selectedArticle.publisher === '한겨레' ? '수정' : '업데이트'} {updateDateStr}
+                            {prefix} {updateDateStr}
                           </span>
                         );
                       }

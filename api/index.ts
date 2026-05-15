@@ -364,6 +364,11 @@ app.get(['/api/article', '/article'], async (req, res) => {
 
     // Add extract variables for updated time
     let articleUpdatedAt = '';
+    let timeType = '';
+    if (html.includes('업데이트')) timeType = '업데이트';
+    else if (html.includes('수정')) timeType = '수정';
+    else if (html.includes('입력')) timeType = '입력';
+    
     const metaMod = document.querySelector('meta[property="article:modified_time"]') || 
                     document.querySelector('meta[name="article:modified_time"]') ||
                     document.querySelector('meta[itemprop="dateModified"]');
@@ -793,7 +798,8 @@ app.get(['/api/article', '/article'], async (req, res) => {
       textContent: article.textContent,
       byline: article.byline,
       originalUrl: targetUrl,
-      updatedAt: articleUpdatedAt
+      updatedAt: articleUpdatedAt,
+      timeType: timeType
     });
   } catch (err: any) {
     console.error('Article Fetch Error:', err);
@@ -856,7 +862,10 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       { publisher: '동아일보', url: 'https://rss.donga.com/opinion.xml' },
       { publisher: '문화일보', url: 'http://www.munhwa.com/news/rss/opinion.xml' },
       { publisher: '한국경제', url: 'https://www.hankyung.com/feed/opinion' },
-      { publisher: '서울경제', url: 'https://www.sedaily.com/rss/Opinion' }
+      { publisher: '서울경제', url: 'https://www.sedaily.com/rss/Opinion' },
+      { publisher: '머니투데이', url: 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+site:mt.co.kr&hl=ko&gl=KR&ceid=KR:ko' },
+      { publisher: '이데일리', url: 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+site:edaily.co.kr&hl=ko&gl=KR&ceid=KR:ko' },
+      { publisher: '파이낸셜뉴스', url: 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+site:fnnews.com&hl=ko&gl=KR&ceid=KR:ko' }
     ];
 
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -892,7 +901,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
            let title = titleMatch ? titleMatch[1].trim() : '';
            
            // Clean title if it's from a search feed (like Google News)
-           if (title.endsWith(' - ' + f.publisher)) {
+           while (title.endsWith(' - ' + f.publisher)) {
                title = title.substring(0, title.length - (' - ' + f.publisher).length);
            }
            
@@ -1158,42 +1167,6 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
       return items;
     })();
 
-    const hankyungPromise = (async () => {
-      const items: any[] = [];
-      try {
-        const response = await fetch('https://www.hankyung.com/opinion/editorial', {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          signal: AbortSignal.timeout(25000)
-        });
-        const html = await response.text();
-        const $ = cheerio.load(html);
-        $('a').each((i, el) => {
-           let title = $(el).text().trim();
-           let link = $(el).attr('href');
-           if (title && isValidEditorialTitle(title) && link) {
-              if (link.startsWith('/')) link = 'https://www.hankyung.com' + link;
-              if (title === '사설') return;
-              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
-              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
-              seenLinks.add(link);
-              seenTitles.add(title.replace(/\s+/g, ''));
-              items.push({
-                 id: link,
-                 publisher: '한국경제',
-                 title,
-                 link,
-                 pubDate: new Date().toISOString(),
-                 contentSnippet: '',
-                 mediaType: 'central'
-              });
-           }
-        });
-      } catch(err) {
-        console.error('Failed to fetch Hankyung:', err);
-      }
-      return items;
-    })();
-
     const munhwaPromise = (async () => {
       const items: any[] = [];
       try {
@@ -1321,7 +1294,6 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         joongangPromise, 
         dongaPromise, 
         khanPromise,
-        hankyungPromise,
         munhwaPromise,
         seoulPromise,
         mkPromise
@@ -1348,7 +1320,7 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
 
     // Attempt to fetch actual pubDate for specific articles that might lack precise time or are known to need meta tag extraction
     const itemsToFix = allItems.filter(item => 
-        ['서울신문', '동아일보', '경향신문', '문화일보', '한국경제', '매일경제', '한겨레'].includes(item.publisher) || 
+        ['서울신문', '동아일보', '경향신문', '문화일보', '한국경제', '매일경제', '한겨레', '조선일보', '중앙일보', '머니투데이', '이데일리', '파이낸셜뉴스'].includes(item.publisher) || 
         item.pubDate.includes('T00:00:00')
     );
     if (itemsToFix.length > 0) {
@@ -1359,6 +1331,53 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
                     signal: AbortSignal.timeout(10000)
                 });
                 const text = await res.text();
+                
+                // For Hankyung, article:modified_time is missing, so parse it manually from HTML "수정" text
+                if (item.publisher === '한국경제') {
+                    const $ = cheerio.load(text);
+                    const dtHtml = $('.datetime').html() || '';
+                    const hkModMatch = dtHtml.match(/수정.*?<span class="txt-date">([^<]+)<\/span>/);
+                    if (hkModMatch && hkModMatch[1]) {
+                        let dtStr = hkModMatch[1].replace(/\./g, '-');
+                        if (dtStr.length === 16) dtStr += ':00';
+                        if (!dtStr.includes('+') && !dtStr.endsWith('Z')) dtStr += '+09:00';
+                        item.pubDate = new Date(dtStr).toISOString();
+                        return; // exit early since we found the actual modified date
+                    }
+                }
+                
+                if (item.publisher === '조선일보') {
+                    const dtTextMatch = text.match(/업데이트\s+(\d{4}\.\d{2}\.\d{2}\.\s+\d{2}:\d{2})/);
+                    if (dtTextMatch && dtTextMatch[1]) {
+                        let dtStr = dtTextMatch[1].replace(/\.\s+/g, 'T').replace(/\./g, '-');
+                        if (dtStr.length === 16) dtStr += ':00';
+                        if (!dtStr.includes('+') && !dtStr.endsWith('Z')) dtStr += '+09:00';
+                        item.pubDate = new Date(dtStr).toISOString();
+                        return;
+                    }
+                    const jsonDate = text.match(/"dateModified":\s*"([^"]+)"/);
+                    if (jsonDate && jsonDate[1]) {
+                        item.pubDate = new Date(jsonDate[1]).toISOString();
+                        return;
+                    }
+                }
+                
+                if (item.publisher === '중앙일보') {
+                    const textModify = text.match(/업데이트\s+(\d{4}\.\d{2}\.\d{2}\s\d{2}:\d{2})/);
+                    if (textModify && textModify[1]) {
+                        let dtStr = textModify[1].replace(/\./g, '-').replace(' ', 'T');
+                        if (dtStr.length === 16) dtStr += ':00';
+                        if (!dtStr.includes('+') && !dtStr.endsWith('Z')) dtStr += '+09:00';
+                        item.pubDate = new Date(dtStr).toISOString();
+                        return;
+                    }
+                    const jsonDate = text.match(/"dateModified":\s*"([^"]+)"/);
+                    if (jsonDate && jsonDate[1]) {
+                        item.pubDate = new Date(jsonDate[1]).toISOString();
+                        return;
+                    }
+                }
+                
                 // Prefer modified_time, fallback to published_time
                 const modMatch = text.match(/article:modified_time["']?\s*content=["']([^"']+)["']/i);
                 const pubMatch = text.match(/article:published_time["']?\s*content=["']([^"']+)["']/i);
