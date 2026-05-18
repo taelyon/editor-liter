@@ -148,7 +148,7 @@ app.get(['/api/article', '/article'], async (req, res) => {
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
       },
       redirect: 'follow',
-      signal: AbortSignal.timeout(25000)
+      signal: AbortSignal.timeout(4000)
     });
 
     // Check if we got a Google News redirect page instead of the article
@@ -168,7 +168,7 @@ app.get(['/api/article', '/article'], async (req, res) => {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           },
-          signal: AbortSignal.timeout(25000)
+          signal: AbortSignal.timeout(4000)
         });
       } else {
         // If we already called text() but found no redirect, we have a problem because we need arrayBuffer for iconv-lite
@@ -177,7 +177,7 @@ app.get(['/api/article', '/article'], async (req, res) => {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           },
-          signal: AbortSignal.timeout(25000)
+          signal: AbortSignal.timeout(4000)
         });
       }
     }
@@ -882,7 +882,7 @@ async function fetchEditorialsBackground() {
       try {
         const response = await fetch(f.url, {
            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-           signal: AbortSignal.timeout(25000)
+           signal: AbortSignal.timeout(8000)
         });
         const buffer = await response.arrayBuffer();
         
@@ -950,321 +950,23 @@ async function fetchEditorialsBackground() {
                    title,
                    link,
                    pubDate,
-                   contentSnippet: description.length > 200 ? description.substring(0, 200) + '...' : description,
-                   mediaType: centralMedia.includes(f.publisher) ? 'central' : 'local'
-               });
+                 contentSnippet: '',
+                 mediaType: 'central'
+              });
            }
         }
-      } catch (err) {
-        console.error(`Failed to fetch direct RSS from ${f.publisher}:`, err);
+      } catch(err) {
+        console.error('Failed to fetch ' + f.publisher + ':', err);
       }
       return items;
     });
-
-    const hankookilboPromise = (async () => {
-      const items: any[] = [];
-      try {
-        const response = await fetch('https://www.hankookilbo.com/news/opinion/editorial', {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-          signal: AbortSignal.timeout(25000)
-        });
-        const html = await response.text();
-        // Find JSON objects representing editorial articles
-        const matches = html.match(/\{"articleId":"([^"]+)"(?:(?!\{).)*?\[사설\](?:(?!\{).)*?\}/g) || [];
-        
-        for (const match of matches) {
-           if (match.includes('"ranking":')) continue; // Skip popular/ranking items which might be old
-           
-           const idMatch = match.match(/\"articleId\":\"([^\"]+)\"/);
-           const titleMatch = match.match(/\"title\":\"([^\"]+)\"/);
-           if (idMatch && titleMatch) {
-              const id = idMatch[1];
-              let title = titleMatch[1];
-              
-              // unicode decode
-              title = title.replace(/\\u([0-9a-fA-F]{4})/g, (m, c) => String.fromCharCode(parseInt(c, 16)));
-              const link = `https://www.hankookilbo.com/News/Read/${id}`;
-              
-              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) continue;
-              
-              let pubDate = new Date().toISOString();
-              const deployDtMatch = match.match(/\"deployDt\":\"([^\"]+)\"/);
-              if (deployDtMatch) {
-                 // The date string like "2026.05.12 00:10" or "2026-05-12 00:10:00" is in KST (UTC+9)
-                 let dtStr = deployDtMatch[1].replace(/\./g, '-').replace(' ', 'T');
-                 if (dtStr.length === 16) dtStr += ':00'; // add seconds if missing
-                 
-                 // If it's already got an offset or Z, use as is, otherwise add +09:00
-                 if (!dtStr.includes('+') && !dtStr.endsWith('Z')) {
-                    dtStr += '+09:00';
-                 }
-                 
-                 // Directly use the ISO string with offset for consistency
-                 pubDate = new Date(dtStr).toISOString();
-              } else {
-                 const dateMatch = id.match(/^A(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
-                 if (dateMatch) {
-                    pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T${dateMatch[4]}:${dateMatch[5]}:${dateMatch[6]}+09:00`).toISOString();
-                 }
-              }
-              
-              seenLinks.add(link);
-              seenTitles.add(title.replace(/\s+/g, ''));
-              
-              items.push({
-                 id: link,
-                 publisher: '한국일보',
-                 title,
-                 link,
-                 pubDate,
-                 contentSnippet: '',
-                 mediaType: 'central'
-              });
-           }
-        }
-      } catch(err) {
-        console.error('Failed to fetch Hankookilbo:', err);
-      }
-      return items;
-    })();
-
-    const joongangPromise = (async () => {
-      const items: any[] = [];
-      try {
-        const response = await fetch('https://www.joongang.co.kr/opinion/editorial', {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-          signal: AbortSignal.timeout(25000)
-        });
-        const html = await response.text();
-        const cards = html.split('<li class="card"').slice(1);
-        for (const card of cards) {
-           const linkMatch = card.match(/href=\"([^\"]+)\"/i);
-           const titleMatch = card.match(/<h[23][^>]*>([\s\S]*?)<\/h[23]>/i);
-           const dateMatch = card.match(/<p class=\"date\">([^<]+)<\/p>/i);
-           
-           if (linkMatch && titleMatch) {
-              let link = linkMatch[1].trim();
-              let title = titleMatch[1].trim().replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
-              
-              if (!link.startsWith('http')) link = 'https://www.joongang.co.kr' + link;
-              
-              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) continue;
-              
-              seenLinks.add(link);
-              seenTitles.add(title.replace(/\s+/g, ''));
-              
-              let pubDate = new Date().toISOString();
-              if (dateMatch) {
-                 const rawDate = dateMatch[1].trim();
-                 // rawDate is usually "YYYY.MM.DD HH:mm"
-                 let dtStr = rawDate.replace(/\./g, '-').replace(' ', 'T');
-                 if (dtStr.length === 16) dtStr += ':00';
-                 if (!dtStr.includes('+') && !dtStr.endsWith('Z')) {
-                    dtStr += '+09:00';
-                 }
-                 pubDate = new Date(dtStr).toISOString();
-              }
-              
-              items.push({
-                 id: link,
-                 publisher: '중앙일보',
-                 title,
-                 link,
-                 pubDate,
-                 contentSnippet: '',
-                 mediaType: 'central'
-              });
-           }
-        }
-      } catch(err) {
-        console.error('Failed to fetch Joongang:', err);
-      }
-      return items;
-    })();
-
-    const dongaPromise = (async () => {
-      const items: any[] = [];
-      try {
-        const response = await fetch('https://www.donga.com/news/Series/70040100000001', {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-          signal: AbortSignal.timeout(25000)
-        });
-        const html = await response.text();
-        const $ = cheerio.load(html);
-        $('a').each((i, el) => {
-           let title = $(el).text().trim();
-           let link = $(el).attr('href');
-           if (title && isValidEditorialTitle(title) && link) {
-              if (link.startsWith('/')) link = 'https://www.donga.com' + link;
-              if (title === '사설') return; // Skip generic ones
-              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
-              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
-              seenLinks.add(link);
-              seenTitles.add(title.replace(/\s+/g, ''));
-              
-              let pubDate = new Date().toISOString();
-              const dateMatch = link.match(/\/(\d{4})(\d{2})(\d{2})\//);
-              if (dateMatch) {
-                  pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00+09:00`).toISOString();
-              }
-              
-              items.push({
-                 id: link,
-                 publisher: '동아일보',
-                 title,
-                 link,
-                 pubDate,
-                 contentSnippet: '',
-                 mediaType: 'central'
-              });
-           }
-        });
-      } catch(err) {
-        console.error('Failed to fetch Donga:', err);
-      }
-      return items;
-    })();
-
-    const khanPromise = (async () => {
-      const items: any[] = [];
-      try {
-        const response = await fetch('https://www.khan.co.kr/opinion/editorial/articles', {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-          signal: AbortSignal.timeout(25000)
-        });
-        const html = await response.text();
-        const $ = cheerio.load(html);
-        $('a').each((i, el) => {
-           let title = $(el).text().trim();
-           let link = $(el).attr('href');
-           if (title && isValidEditorialTitle(title) && link) {
-              if (link.startsWith('/')) link = 'https://www.khan.co.kr' + link;
-              if (title === '사설') return;
-              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
-              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
-              seenLinks.add(link);
-              seenTitles.add(title.replace(/\s+/g, ''));
-              
-              let pubDate = new Date().toISOString();
-              const dateMatch = link.match(/\/article\/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
-              if (dateMatch) {
-                  pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T${dateMatch[4]}:${dateMatch[5]}:${dateMatch[6]}+09:00`).toISOString();
-              } else {
-                  const backupMatch = link.match(/\/article\/(\d{4})(\d{2})(\d{2})/);
-                  if (backupMatch) {
-                      pubDate = new Date(`${backupMatch[1]}-${backupMatch[2]}-${backupMatch[3]}T00:00:00+09:00`).toISOString();
-                  }
-              }
-              
-              items.push({
-                 id: link,
-                 publisher: '경향신문',
-                 title,
-                 link,
-                 pubDate,
-                 contentSnippet: '',
-                 mediaType: 'central'
-              });
-           }
-        });
-      } catch(err) {
-        console.error('Failed to fetch Khan:', err);
-      }
-      return items;
-    })();
-
-    const munhwaPromise = (async () => {
-      const items: any[] = [];
-      try {
-        const response = await fetch('https://www.munhwa.com/opinion/editorial', {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          signal: AbortSignal.timeout(25000)
-        });
-        const html = await response.text();
-        const $ = cheerio.load(html);
-        $('a').each((i, el) => {
-           let title = $(el).text().trim();
-           let link = $(el).attr('href');
-           if (title && isValidEditorialTitle(title) && link) {
-              if (link.startsWith('/')) link = 'https://www.munhwa.com' + link;
-              if (title === '사설') return;
-              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
-              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
-              seenLinks.add(link);
-              seenTitles.add(title.replace(/\s+/g, ''));
-              
-              let pubDate = new Date().toISOString();
-              const dateMatch = link.match(/no=(\d{4})(\d{2})(\d{2})/);
-              if (dateMatch) {
-                  pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00+09:00`).toISOString();
-              }
-              
-              items.push({
-                 id: link,
-                 publisher: '문화일보',
-                 title,
-                 link,
-                 pubDate,
-                 contentSnippet: '',
-                 mediaType: 'central'
-              });
-           }
-        });
-      } catch(err) {
-        console.error('Failed to fetch Munhwa:', err);
-      }
-      return items;
-    })();
-
-    const seoulPromise = (async () => {
-      const items: any[] = [];
-      try {
-        const response = await fetch('https://www.seoul.co.kr/newsList/editOpinion/editorial/', {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          signal: AbortSignal.timeout(25000)
-        });
-        const html = await response.text();
-        const $ = cheerio.load(html);
-        $('a').each((i, el) => {
-           let title = $(el).text().trim() || $(el).attr('title')?.trim() || '';
-           let link = $(el).attr('href');
-           if (title && isValidEditorialTitle(title) && link) {
-              if (title === '사설') return;
-              if (link.startsWith('/')) link = 'https://www.seoul.co.kr' + link;
-              title = title.replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
-              if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
-              seenLinks.add(link);
-              seenTitles.add(title.replace(/\s+/g, ''));
-              
-              let pubDate = new Date().toISOString();
-              const dateMatch = link.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//);
-              if (dateMatch) {
-                  pubDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00+09:00`).toISOString();
-              }
-              
-              items.push({
-                 id: link,
-                 publisher: '서울신문',
-                 title,
-                 link,
-                 pubDate,
-                 contentSnippet: '',
-                 mediaType: 'central'
-              });
-           }
-        });
-      } catch(err) {
-        console.error('Failed to fetch Seoul:', err);
-      }
-      return items;
-    })();
 
     const mkPromise = (async () => {
       const items: any[] = [];
       try {
         const response = await fetch('https://www.mk.co.kr/opinion/editorial/', {
           headers: { 'User-Agent': 'Mozilla/5.0' },
-          signal: AbortSignal.timeout(25000)
+          signal: AbortSignal.timeout(8000)
         });
         const html = await response.text();
         const $ = cheerio.load(html);
@@ -1296,12 +998,6 @@ async function fetchEditorialsBackground() {
 
     const results = await Promise.all([
         ...feedPromises, 
-        hankookilboPromise, 
-        joongangPromise, 
-        dongaPromise, 
-        khanPromise,
-        munhwaPromise,
-        seoulPromise,
         mkPromise
     ]);
     
@@ -1324,10 +1020,8 @@ async function fetchEditorialsBackground() {
        }
     }
 
-    
     const now = new Date();
     
-    // Filter out old news (older than 3-4 days) and problematic redirects
     const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'msn.com', 'zum.com'];
     
     allItems = allItems.filter(item => {
@@ -1344,27 +1038,25 @@ async function fetchEditorialsBackground() {
       return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
     });
     
-    // PRE-CACHE with basic dates to be instantly available!
     cachedEditorials = structuredClone ? structuredClone(allItems) : JSON.parse(JSON.stringify(allItems));
     lastEditorialsFetchTime = Date.now();
+    isFetchingEditorials = false; // Mark true locally right here to prevent timeout on first app.get wait
     
-    // ATTEMPT TO FETCH METADATA ASYNCHRONOUSLY WITHOUT BLOCKING INITIAL CACHING
     const itemsToFix = allItems.filter(item => 
         ['서울신문', '동아일보', '경향신문', '문화일보', '한국경제', '매일경제', '한겨레', '조선일보', '중앙일보', '머니투데이', '이데일리', '파이낸셜뉴스'].includes(item.publisher) || 
         item.pubDate.includes('T00:00:00')
     );
     if (itemsToFix.length > 0) {
-        await Promise.allSettled(itemsToFix.map(async (item) => {
+        Promise.allSettled(itemsToFix.map(async (item) => {
             try {
                 const res = await fetch(item.link, {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-                    signal: AbortSignal.timeout(10000)
+                    signal: AbortSignal.timeout(3000)
                 });
                 const text = await res.text();
                 
-                // For Hankyung, article:modified_time is missing, so parse it manually from HTML "수정" text
+                const $ = cheerio.load(text);
                 if (item.publisher === '한국경제') {
-                    const $ = cheerio.load(text);
                     const dtHtml = $('.datetime').html() || '';
                     const hkModMatch = dtHtml.match(/수정.*?<span class="txt-date">([^<]+)<\/span>/);
                     if (hkModMatch && hkModMatch[1]) {
@@ -1372,7 +1064,7 @@ async function fetchEditorialsBackground() {
                         if (dtStr.length === 16) dtStr += ':00';
                         if (!dtStr.includes('+') && !dtStr.endsWith('Z')) dtStr += '+09:00';
                         item.pubDate = new Date(dtStr).toISOString();
-                        return; // exit early since we found the actual modified date
+                        return;
                     }
                 }
                 
@@ -1408,11 +1100,8 @@ async function fetchEditorialsBackground() {
                     }
                 }
                 
-                // Prefer modified_time, fallback to published_time
                 const modMatch = text.match(/article:modified_time["']?\s*content=["']([^"']+)["']/i);
                 const pubMatch = text.match(/article:published_time["']?\s*content=["']([^"']+)["']/i);
-                
-                // Backup for basic date formats found in HTML if meta tags are missing
                 const dateRegex = /202[0-9][-.\/][0-1][0-9][-.\/][0-3][0-9][\sT][0-2][0-9]:[0-5][0-9]/;
                 
                 if (modMatch && modMatch[1]) {
@@ -1423,54 +1112,59 @@ async function fetchEditorialsBackground() {
                     const fallbackMatch = text.match(dateRegex);
                     if (fallbackMatch && fallbackMatch[0]) {
                         let parsedDate = fallbackMatch[0].replace(/[-.\/]/g, '-').replace(' ', 'T');
-                        if (parsedDate.length === 16) parsedDate += ':00'; // Add seconds
+                        if (parsedDate.length === 16) parsedDate += ':00';
                         if (!parsedDate.includes('+') && !parsedDate.endsWith('Z')) parsedDate += '+09:00';
                         item.pubDate = new Date(parsedDate).toISOString();
                     }
                 }
             } catch (e: any) {
-                // Silently ignore individual fetch failures to avoid spamming logs, use fallback date
             }
-        }));
+        })).then(() => {
+            allItems.sort((a, b) => {
+              if (a.publisher < b.publisher) return -1;
+              if (a.publisher > b.publisher) return 1;
+              return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+            });
+            cachedEditorials = allItems;
+        }).catch(console.error);
     }
 
-    
-    // Re-sort after dates are fixed
-    allItems.sort((a, b) => {
-      if (a.publisher < b.publisher) return -1;
-      if (a.publisher > b.publisher) return 1;
-      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
-    });
-    cachedEditorials = allItems;
-    lastEditorialsFetchTime = Date.now();
-   
   } catch (error: any) {
     console.error('RSS Fetch Error:', error);
-  } finally {
     isFetchingEditorials = false;
   }
 }
 
+let activeFetchPromise: Promise<void> | null = null;
+
 app.get(['/api/editorials', '/editorials'], async (req, res) => {
   const now = Date.now();
   if (!cachedEditorials || cachedEditorials.length === 0) {
-      if (!isFetchingEditorials) {
-          await fetchEditorialsBackground();
-      } else {
-          let retries = 50;
-          while (isFetchingEditorials && (!cachedEditorials || cachedEditorials.length === 0) && retries > 0) {
-              await new Promise(r => setTimeout(r, 100)); // wait up to 5s
-              retries--;
-          }
+      if (!activeFetchPromise) {
+          activeFetchPromise = fetchEditorialsBackground().finally(() => { activeFetchPromise = null; });
+      }
+      try {
+          await Promise.race([
+              activeFetchPromise,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000))
+          ]);
+      } catch (e) {
+          console.error('Timeout waiting for initial fetch');
       }
   }
   
   if (now - lastEditorialsFetchTime > 15 * 60 * 1000) {
-      if (!isFetchingEditorials) fetchEditorialsBackground().catch(console.error);
+      if (!activeFetchPromise) {
+          activeFetchPromise = fetchEditorialsBackground().finally(() => { activeFetchPromise = null; });
+      }
   }
   
-  res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=300');
-  res.json(cachedEditorials);
+  if (!cachedEditorials || cachedEditorials.length === 0) {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+  } else {
+      res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=300');
+  }
+  res.json(cachedEditorials || []);
 });
 
 let cachedClassics: any = null;
@@ -1487,38 +1181,25 @@ async function fetchClassicsBackground() {
     if (process.env.GEMINI_API_KEY) {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: `당신은 동양과 서양 고전에 정통한 매우 뛰어난 큐레이터입니다.
-매일 새로운 영감을 주는 고전 명언을 사람들에게 소개합니다.
-오늘을 위한 명언 6개(동양 고전 3개, 서양 고전 3개)를 무작위로 전혀 뻔하지 않고 새롭고 다양한 문헌에서 발췌해 주세요. (예: 논어, 군주론 외에도 한비자, 맹자, 채근담, 세네카, 플라톤, 셰익스피어, 에픽테토스 등 다양한 고전 활용)
-현재 시간: ${new Date().getTime()}
-정확히 아래 JSON 배열 형식으로만 응답해야 합니다.
-[
-  {
-    "id": 1,
-    "category": "동양" 또는 "서양",
-    "title": "책이나 문헌 이름 (예: 논어, 군주론)",
-    "author": "저자 이름",
-    "quote": "유명한 짧은 명언",
-    "content": "이 명언이 주는 핵심 교훈이나 통찰 (1~2문장)",
-    "fullText": "이 명언이 포함된 맥락을 알 수 있는 원문 번역 또는 전체 문구 (동양 고전의 경우 한자 원문 병기 권장)"
-  }
-]`,
-          config: {
-              responseMimeType: "application/json",
-              temperature: 0.9,
-          }
+        model: 'gemini-2.5-flash',
+        contents: `당신은 동양과 서양의 고전을 잘 아는 지식인입니다.
+다음 형식에 맞춰 매일 다른 짧은 1문장짜리 명언 6개를 JSON 배열 형식으로 만들어주세요.
+동양 고전 (논어, 장자, 손자병법 등) 3개, 서양 고전 (명상록, 군주론 등) 3개.
+다른 말은 하지 말고 꼭 JSON 배열만 출력하세요. 배열 이외의 다른 사족은 절대 포함하지 마세요. (예: \`\`\`json 등의 마크다운도 빼세요)
+[{ "id": 1, "category": "동양", "title": "서명", "author": "저자명", "quote": "짧은 명언 (1문장)", "content": "그 명언이 의미하는 바에 대한 짧은 해설 (2문장 이내)", "fullText": "원문 일부 또는 관련 컨텍스트 (3~4문장)" }]`,
+        config: {
+            temperature: 0.8
+        }
       });
-
+      
       const text = response.text;
       if (text) {
-          const parsed = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
-          if (Array.isArray(parsed) && parsed.length > 0) {
-              // Add stable IDs
-              const dataWithIds = parsed.map((item, index) => ({
-                ...item,
-                id: index + 1
-              }));
+          // Remove markdown formatting if any
+          const cleanText = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+          const data = JSON.parse(cleanText);
+          if (Array.isArray(data) && data.length > 0) {
+              let id = 1;
+              const dataWithIds = data.map(item => ({ ...item, id: id++ }));
               cachedClassics = dataWithIds;
               lastClassicsDate = today;
           }
@@ -1536,18 +1217,17 @@ async function fetchClassicsBackground() {
 app.get(['/api/classics', '/classics'], (req, res) => {
   const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
   if (!cachedClassics || lastClassicsDate !== today) {
-    fetchClassicsBackground().catch(console.error);
+    if (!isFetchingClassics) fetchClassicsBackground().catch(console.error);
   }
   
   res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
   res.json(cachedClassics || fallbackClassicsData);
 });
 
-
-
 // Pre-fetch items on application start to avoid slow initial requests
-fetchEditorialsBackground().catch(console.error);
+if (!activeFetchPromise) {
+    activeFetchPromise = fetchEditorialsBackground().finally(() => { activeFetchPromise = null; });
+}
 fetchClassicsBackground().catch(console.error);
 
 export default app;
-
