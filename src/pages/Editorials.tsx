@@ -232,7 +232,7 @@ export default function Editorials() {
           
           if (filteredEditorials.length > 0) {
             return (
-              <div className="space-y-6">
+              <div className="space-y-6 animate-fade-in-down" style={{ animationDuration: '0.4s' }}>
                 {filteredEditorials.map(article => (
                   <div 
                     key={article.id} 

@@ -64,7 +64,7 @@ export default function Classics() {
         ))}
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-8 animate-fade-in-down" style={{ animationDuration: '0.4s' }}>
         {isLoading ? (
           <div className="space-y-8 animate-pulse">
             {[1, 2, 3].map((i) => (
