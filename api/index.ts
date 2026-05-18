@@ -1208,7 +1208,14 @@ async function fetchClassicsBackground() {
       throw new Error('No API Key');
     }
   } catch (error: any) {
-    console.error('Classics Fetch Error:', error.message);
+    const errorMsg = error.message || String(error);
+    if (errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID')) {
+      console.warn('Classics Fetch: Invalid Gemini API Key. Using fallback data.');
+    } else {
+      console.error('Classics Fetch Error:', errorMsg);
+    }
+    // Prevent retrying on every request if it fails
+    lastClassicsDate = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
   } finally {
     isFetchingClassics = false;
   }
