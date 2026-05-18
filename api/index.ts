@@ -838,7 +838,13 @@ function isValidEditorialTitle(title: string): boolean {
   return true;
 }
 
-app.get(['/api/editorials', '/editorials'], async (req, res) => {
+let cachedEditorials: any[] = [];
+let lastEditorialsFetchTime: number = 0;
+let isFetchingEditorials = false;
+
+async function fetchEditorialsBackground() {
+  if (isFetchingEditorials) return;
+  isFetchingEditorials = true;
   try {
     let allItems: any[] = [];
     const seenLinks = new Set<string>();
@@ -1318,7 +1324,31 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
        }
     }
 
-    // Attempt to fetch actual pubDate for specific articles that might lack precise time or are known to need meta tag extraction
+    
+    const now = new Date();
+    
+    // Filter out old news (older than 3-4 days) and problematic redirects
+    const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'msn.com', 'zum.com'];
+    
+    allItems = allItems.filter(item => {
+      const source = (item.publisher || '').toLowerCase();
+      const isExcludedLink = excludedSources.some(excluded => item.link.includes(excluded));
+      const pubDate = new Date(item.pubDate || '');
+      const isRecent = now.getTime() - pubDate.getTime() <= 96 * 60 * 60 * 1000;
+      return !isExcludedLink && isRecent && item.mediaType === 'central';
+    });
+
+    allItems.sort((a, b) => {
+      if (a.publisher < b.publisher) return -1;
+      if (a.publisher > b.publisher) return 1;
+      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+    });
+    
+    // PRE-CACHE with basic dates to be instantly available!
+    cachedEditorials = structuredClone ? structuredClone(allItems) : JSON.parse(JSON.stringify(allItems));
+    lastEditorialsFetchTime = Date.now();
+    
+    // ATTEMPT TO FETCH METADATA ASYNCHRONOUSLY WITHOUT BLOCKING INITIAL CACHING
     const itemsToFix = allItems.filter(item => 
         ['서울신문', '동아일보', '경향신문', '문화일보', '한국경제', '매일경제', '한겨레', '조선일보', '중앙일보', '머니투데이', '이데일리', '파이낸셜뉴스'].includes(item.publisher) || 
         item.pubDate.includes('T00:00:00')
@@ -1404,48 +1434,55 @@ app.get(['/api/editorials', '/editorials'], async (req, res) => {
         }));
     }
 
-    const now = new Date();
     
-    // Filter out old news (older than 3-4 days) and problematic redirects
-    const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'msn.com', 'zum.com'];
-    
-    allItems = allItems.filter(item => {
-      const source = (item.publisher || '').toLowerCase();
-      // Only exclude naver.com if the publisher is unknown or it's clearly a portal-only item
-      // Many publishers today use Naver as their primary search result target
-      const isExcludedLink = excludedSources.some(excluded => item.link.includes(excluded));
-      
-      const pubDate = new Date(item.pubDate || '');
-      const isRecent = now.getTime() - pubDate.getTime() <= 96 * 60 * 60 * 1000; // 4 days (slightly wider)
-      
-      return !isExcludedLink && isRecent && item.mediaType === 'central';
-    });
-
+    // Re-sort after dates are fixed
     allItems.sort((a, b) => {
       if (a.publisher < b.publisher) return -1;
       if (a.publisher > b.publisher) return 1;
-      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(); // Newest first for same publisher
+      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
     });
-
-    res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=86400');
-    res.json(allItems);
+    cachedEditorials = allItems;
+    lastEditorialsFetchTime = Date.now();
+   
   } catch (error: any) {
     console.error('RSS Fetch Error:', error);
-    res.status(500).json({ error: 'Failed to fetch editorials', details: error.message });
+  } finally {
+    isFetchingEditorials = false;
   }
+}
+
+app.get(['/api/editorials', '/editorials'], async (req, res) => {
+  const now = Date.now();
+  if (!cachedEditorials || cachedEditorials.length === 0) {
+      if (!isFetchingEditorials) {
+          await fetchEditorialsBackground();
+      } else {
+          let retries = 50;
+          while (isFetchingEditorials && (!cachedEditorials || cachedEditorials.length === 0) && retries > 0) {
+              await new Promise(r => setTimeout(r, 100)); // wait up to 5s
+              retries--;
+          }
+      }
+  }
+  
+  if (now - lastEditorialsFetchTime > 15 * 60 * 1000) {
+      if (!isFetchingEditorials) fetchEditorialsBackground().catch(console.error);
+  }
+  
+  res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=300');
+  res.json(cachedEditorials);
 });
 
 let cachedClassics: any = null;
 let lastClassicsDate: string = '';
+let isFetchingClassics = false;
 
-app.get(['/api/classics', '/classics'], async (req, res) => {
+async function fetchClassicsBackground() {
+  if (isFetchingClassics) return;
+  isFetchingClassics = true;
   try {
-    // Generate new quotes once a day
     const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
-    if (cachedClassics && lastClassicsDate === today) {
-      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
-      return res.json(cachedClassics);
-    }
+    if (cachedClassics && lastClassicsDate === today) return;
     
     if (process.env.GEMINI_API_KEY) {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -1484,29 +1521,33 @@ app.get(['/api/classics', '/classics'], async (req, res) => {
               }));
               cachedClassics = dataWithIds;
               lastClassicsDate = today;
-              res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
-              return res.json(dataWithIds);
           }
       }
-    }
-    
-    // Fallback if no API Key or Gemini fails
-    throw new Error('Gemini API Error or No API Key');
-  } catch (error: any) {
-    const isApiKeyError = error.message?.includes('API key') || error.message?.includes('API_KEY_INVALID') || error.message?.includes('Gemini API Error or No API Key');
-    if (isApiKeyError) {
-      console.log('Classics Fetch: Fallback to static data (Gemini API Key missing or invalid).');
     } else {
-      console.error('Classics Fetch Error:', error.message);
+      throw new Error('No API Key');
     }
-    if (cachedClassics) {
-      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
-      return res.json(cachedClassics);
-    }
-    // Static fallback
-    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
-    res.json(fallbackClassicsData);
+  } catch (error: any) {
+    console.error('Classics Fetch Error:', error.message);
+  } finally {
+    isFetchingClassics = false;
   }
+}
+
+app.get(['/api/classics', '/classics'], (req, res) => {
+  const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
+  if (!cachedClassics || lastClassicsDate !== today) {
+    fetchClassicsBackground().catch(console.error);
+  }
+  
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
+  res.json(cachedClassics || fallbackClassicsData);
 });
 
+
+
+// Pre-fetch items on application start to avoid slow initial requests
+fetchEditorialsBackground().catch(console.error);
+fetchClassicsBackground().catch(console.error);
+
 export default app;
+
