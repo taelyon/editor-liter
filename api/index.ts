@@ -863,8 +863,8 @@ async function fetchEditorialsBackground() {
     const directFeeds = [
       { publisher: '조선일보', url: 'https://www.chosun.com/arc/outboundfeeds/rss/category/opinion/?outputType=xml' },
       { publisher: '한겨레', url: 'https://www.hani.co.kr/rss/opinion/' },
-      { publisher: '한국경제', url: 'https://www.hankyung.com/feed/opinion' },
-      { publisher: '서울경제', url: 'https://www.sedaily.com/rss/Opinion' },
+      { publisher: '한국경제', url: 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+site:hankyung.com&hl=ko&gl=KR&ceid=KR:ko' },
+      { publisher: '서울경제', url: 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+site:sedaily.com&hl=ko&gl=KR&ceid=KR:ko' },
       { publisher: '경향신문', url: 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+site:khan.co.kr&hl=ko&gl=KR&ceid=KR:ko' },
       { publisher: '서울신문', url: 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+site:seoul.co.kr&hl=ko&gl=KR&ceid=KR:ko' },
       { publisher: '동아일보', url: 'https://news.google.com/rss/search?q=%EC%82%AC%EC%84%A4+site:donga.com&hl=ko&gl=KR&ceid=KR:ko' },
