@@ -973,12 +973,30 @@ async function fetchEditorialsBackground() {
         const html = await response.text();
         const $ = cheerio.load(html);
         $('a').each((i, el) => {
-           let title = $(el).text().trim() || $(el).attr('title')?.trim() || '';
+           let title = $(el).find('h4').text().trim();
+           if (!title) title = $(el).text().trim() || $(el).attr('title')?.trim() || '';
            let link = $(el).attr('href');
            if (title && isValidEditorialTitle(title) && link && link.includes('mk.co.kr')) {
               title = title.split('\n')[0].replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/<[^>]+>/g, '').trim();
               if (title === '사설') return;
               if (seenLinks.has(link) || seenTitles.has(title.replace(/\s+/g, ''))) return;
+              
+              let pubDateStr = new Date().toISOString();
+              const timeInfo = $(el).find('.time_info').text().trim() || $(el).find('.time_area span').html()?.trim() || '';
+              if (timeInfo.includes('시간 전')) {
+                  const hours = parseInt(timeInfo);
+                  if (!isNaN(hours)) pubDateStr = new Date(Date.now() - hours * 3600000).toISOString();
+              } else if (timeInfo.includes('일 전')) {
+                  const days = parseInt(timeInfo);
+                  if (!isNaN(days)) pubDateStr = new Date(Date.now() - days * 86400000).toISOString();
+              } else {
+                  const infoText = $(el).find('.time_info').text().trim();
+                  const dtMatch = infoText.match(/202[0-9]\.[0-1][0-9]\.[0-3][0-9]\s+[0-2][0-9]:[0-5][0-9]/);
+                  if (dtMatch) {
+                      pubDateStr = new Date(dtMatch[0].replace(/\./g, '-').replace(' ', 'T') + ':00+09:00').toISOString();
+                  }
+              }
+
               seenLinks.add(link);
               seenTitles.add(title.replace(/\s+/g, ''));
               items.push({
@@ -986,7 +1004,7 @@ async function fetchEditorialsBackground() {
                  publisher: '매일경제',
                  title,
                  link,
-                 pubDate: new Date().toISOString(),
+                 pubDate: pubDateStr,
                  contentSnippet: '',
                  mediaType: 'central'
               });
@@ -1049,7 +1067,7 @@ async function fetchEditorialsBackground() {
         item.pubDate.includes('T00:00:00')
     );
     if (itemsToFix.length > 0) {
-        Promise.allSettled(itemsToFix.map(async (item) => {
+        await Promise.allSettled(itemsToFix.map(async (item) => {
             try {
                 const res = await fetch(item.link, {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -1102,14 +1120,18 @@ async function fetchEditorialsBackground() {
                     }
                 }
                 
-                const modMatch = text.match(/article:modified_time["']?\s*content=["']([^"']+)["']/i);
-                const pubMatch = text.match(/article:published_time["']?\s*content=["']([^"']+)["']/i);
+                const modMatch = text.match(/article:modified_time["']?\s*content=["']([^"']+)["']/i) || text.match(/content=["']([^"']+)["'][^>]*article:modified_time/i);
+                const pubMatch = text.match(/article:published_time["']?\s*content=["']([^"']+)["']/i) || text.match(/content=["']([^"']+)["'][^>]*article:published_time/i);
                 const dateRegex = /202[0-9][-.\/][0-1][0-9][-.\/][0-3][0-9][\sT][0-2][0-9]:[0-5][0-9]/;
                 
                 if (modMatch && modMatch[1]) {
-                    item.pubDate = new Date(modMatch[1]).toISOString();
+                    let dStr = modMatch[1];
+                    if (!dStr.includes('+') && !dStr.endsWith('Z') && dStr.length >= 10) dStr += '+09:00';
+                    item.pubDate = new Date(dStr).toISOString();
                 } else if (pubMatch && pubMatch[1]) {
-                    item.pubDate = new Date(pubMatch[1]).toISOString();
+                    let dStr = pubMatch[1];
+                    if (!dStr.includes('+') && !dStr.endsWith('Z') && dStr.length >= 10) dStr += '+09:00';
+                    item.pubDate = new Date(dStr).toISOString();
                 } else {
                     const fallbackMatch = text.match(dateRegex);
                     if (fallbackMatch && fallbackMatch[0]) {
@@ -1121,14 +1143,13 @@ async function fetchEditorialsBackground() {
                 }
             } catch (e: any) {
             }
-        })).then(() => {
-            allItems.sort((a, b) => {
-              if (a.publisher < b.publisher) return -1;
-              if (a.publisher > b.publisher) return 1;
-              return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
-            });
-            cachedEditorials = allItems;
-        }).catch(console.error);
+        }));
+        allItems.sort((a, b) => {
+          if (a.publisher < b.publisher) return -1;
+          if (a.publisher > b.publisher) return 1;
+          return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+        });
+        cachedEditorials = allItems;
     }
 
   } catch (error: any) {
