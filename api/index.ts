@@ -6,6 +6,8 @@ import { JSDOM } from 'jsdom';
 import iconv from 'iconv-lite';
 import { GoogleGenAI } from '@google/genai';
 import * as cheerio from 'cheerio';
+import fs from 'fs';
+import path from 'path';
 
 const fallbackClassicsData = [
   {
@@ -1194,30 +1196,87 @@ let cachedClassics: any = null;
 let lastClassicsDate: string = '';
 let isFetchingClassics = false;
 
+function saveClassicsToCache(today: string, data: any) {
+  const cacheObj = { lastClassicsDate: today, data };
+  const cacheStr = JSON.stringify(cacheObj, null, 2);
+  
+  // 1. Try local project directory for persistent environment (Synology NAS, Docker etc.)
+  try {
+    fs.writeFileSync(path.join(process.cwd(), 'classics-cache.json'), cacheStr, 'utf8');
+    console.log('Classics cache successfully saved to local directory.');
+    return;
+  } catch (err: any) {
+    // Read-only filesystem in Vercel or similar environment
+  }
+  
+  // 2. Try tmp directory as fallback for serverless environments (Vercel)
+  try {
+    fs.writeFileSync('/tmp/classics-cache.json', cacheStr, 'utf8');
+    console.log('Classics cache successfully saved to /tmp directory.');
+  } catch (err: any) {
+    console.warn('Failed to save classics cache to file system:', err.message);
+  }
+}
+
+function loadClassicsFromCache() {
+  const candidates = [
+    path.join(process.cwd(), 'classics-cache.json'),
+    '/tmp/classics-cache.json'
+  ];
+  
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, 'utf8');
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed.lastClassicsDate === 'string' && Array.isArray(parsed.data)) {
+          cachedClassics = parsed.data;
+          lastClassicsDate = parsed.lastClassicsDate;
+          console.log(`Classics cache successfully loaded from ${p} (Cached Date: ${lastClassicsDate})`);
+          return true;
+        }
+      }
+    } catch (err: any) {
+      // Continue to next candidate
+    }
+  }
+  return false;
+}
+
 async function fetchClassicsBackground() {
   if (isFetchingClassics) return;
   isFetchingClassics = true;
   try {
     const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
+    
+    // First try loading from file cache
+    if (!cachedClassics) {
+      loadClassicsFromCache();
+    }
+    
     if (cachedClassics && lastClassicsDate === today) return;
     
     if (process.env.GEMINI_API_KEY) {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `당신은 동양과 서양의 고전을 잘 아는 지식인입니다.
-다음 형식에 맞춰 매일 다른 짧은 1문장짜리 명언 6개를 JSON 배열 형식으로 만들어주세요.
-동양 고전 (논어, 장자, 손자병법 등) 3개, 서양 고전 (명상록, 군주론 등) 3개.
-다른 말은 하지 말고 꼭 JSON 배열만 출력하세요. 배열 이외의 다른 사족은 절대 포함하지 마세요. (예: \`\`\`json 등의 마크다운도 빼세요)
-[{ "id": 1, "category": "동양", "title": "서명", "author": "저자명", "quote": "짧은 명언 (1문장)", "content": "그 명언이 의미하는 바에 대한 짧은 해설 (2문장 이내)", "fullText": "원문 일부 또는 관련 컨텍스트 (3~4문장)" }]`,
+        model: 'gemini-3.5-flash',
+        contents: `당신은 전 세계 동서양의 인문, 지리, 철학, 역사 고전을 두루 꿰뚫고 있는 학식 깊은 인문학자입니다.
+오늘의 날짜(${today})를 기준으로 매일 색다르고 겹치지 않는 지혜 가득한 짧은 1문장짜리 고전 명언 6개를 JSON 배열 형식으로 만들어주세요.
+
+[다양성 가이드라인]
+1. 동양 고전 3개: 단순히 '논어, 장자, 손자병법'에만 국한되지 마세요. 공자(논어), 장자, 손무(손자병법) 뿐만 아니라 맹자, 대학, 중용, 도덕경(노자), 한비자, 사기(사마천), 열자, 삼국지, 신론, 목민심서, 성학십도, 당시삼백수, 채근담 등 한국·중국·인도의 폭넓고 깊이 있는 다채로운 사상가들의 고전 서적에서 매일 색다른 구절을 균형있게 추출해 주세요.
+2. 서양 고전 3개: 단순히 '명상록, 군주론'에만 국한되지 마세요. 아우렐리우스(명상록), 마키아벨리(군주론) 뿐만 아니라 소크라테스의 변명, 국가(플라톤), 니코마코스 윤리학(아리스토텔레스), 의무론(키케로), 세네카 서간집, 수상록(몽테뉴), 팡세(파스칼), 에밀(루소), 짜라투스트라는 이렇게 말했다(니체), 실천이성비판(칸트), 아담 스미스의 국부론, 그리스 로마 신화, 호메로스의 일리아스, 셰익스피어 희곡 등 고대 그리스·로마부터 근대 인문 명저에 이르기까지 입체적이고 다채로운 서적들을 과감하게 활용해 주세요.
+3. 다양하고 영감 넘치는 도서 배분을 위해 오늘의 날짜인 ${today}의 숫자나 고전적 영감을 감안해 완전히 새롭고 풍부한 고전 문장을 발굴해 주시기 바랍니다.
+
+다른 사족이나 주석, 마크다운 기호(\`\`\`json 등)를 완전히 빼고, 반드시 아래 정의된 순수한 JSON 배열 포맷으로만 정확히 출력해 주세요:
+[{ "id": 1, "category": "동양", "title": "서명", "author": "저자명", "quote": "짧은 명언 (1문장, 직관적이고 수려한 한글 번역)", "content": "그 명언이 담고 있는 현대적 의미에 대한 짧고 친절한 해설 (2문장 이내)", "fullText": "원문에 원어(예: 한자어 또는 라틴어 원음 등 상황에 맞춰 수록)와 이에 얽힌 유래, 세부 컨텍스트를 담은 상세 내용 (3~4문장)" }]`,
         config: {
-            temperature: 0.8
+            temperature: 0.95
         }
       });
       
       const text = response.text;
       if (text) {
-          // Remove markdown formatting if any
           const cleanText = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
           const data = JSON.parse(cleanText);
           if (Array.isArray(data) && data.length > 0) {
@@ -1225,6 +1284,7 @@ async function fetchClassicsBackground() {
               const dataWithIds = data.map(item => ({ ...item, id: id++ }));
               cachedClassics = dataWithIds;
               lastClassicsDate = today;
+              saveClassicsToCache(today, cachedClassics);
           }
       }
     } else {
@@ -1237,8 +1297,19 @@ async function fetchClassicsBackground() {
     } else {
       console.error('Classics Fetch Error:', errorMsg);
     }
-    // Prevent retrying on every request if it fails
-    lastClassicsDate = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
+    
+    // Attempt block infinite retries if API fails
+    const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
+    if (!cachedClassics) {
+      if (loadClassicsFromCache()) {
+        console.log('Restored prior cache due to API fetch failure.');
+      } else {
+        cachedClassics = fallbackClassicsData;
+        lastClassicsDate = today;
+      }
+    } else {
+      lastClassicsDate = today;
+    }
   } finally {
     isFetchingClassics = false;
   }
@@ -1258,6 +1329,8 @@ app.get(['/api/classics', '/classics'], (req, res) => {
 if (!activeFetchPromise) {
     activeFetchPromise = fetchEditorialsBackground().finally(() => { activeFetchPromise = null; });
 }
+// Try loading from file cache immediately on server startup
+loadClassicsFromCache();
 fetchClassicsBackground().catch(console.error);
 
 export default app;
