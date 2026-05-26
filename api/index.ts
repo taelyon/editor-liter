@@ -1,4 +1,7 @@
+import 'dotenv/config';
 import express from 'express';
+import fs from 'fs';
+
 import Parser from 'rss-parser';
 import { GoogleDecoder } from 'google-news-url-decoder';
 import { Readability } from '@mozilla/readability';
@@ -6,7 +9,6 @@ import { JSDOM } from 'jsdom';
 import iconv from 'iconv-lite';
 import { GoogleGenAI } from '@google/genai';
 import * as cheerio from 'cheerio';
-import fs from 'fs';
 import path from 'path';
 
 const fallbackClassicsData = [
@@ -829,14 +831,20 @@ function cleanUrl(url: string): string {
 
 function isValidEditorialTitle(title: string): boolean {
   if (!title || !title.includes('사설')) return false;
-  if (title.includes('[사설]') || title.includes('사설]') || title.includes('[사설') || title.startsWith('사설 ')) return true;
+  
+  const cleanTitle = title.replace(/\s+/g, '');
+  if (cleanTitle === '사설' || cleanTitle === '[사설]') return false;
+  if (cleanTitle.includes('오피니언|사설') || cleanTitle.includes('오피니언>사설')) return false;
+
   const exclusions = [
-    '사설업체', '사설 업체', '사설구급차', '사설 구급차', '사설도박', '사설 도박', 
-    '사설학원', '사설 학원', '사설망', '사설탐정', '사설토토', '사설서버', '사설수리'
+    '사설업체', '사설구급차', '사설도박', 
+    '사설학원', '사설망', '사설탐정', '사설토토', '사설서버', '사설수리'
   ];
   for (const ex of exclusions) {
-      if (title.includes(ex)) return false;
+      if (cleanTitle.includes(ex)) return false;
   }
+  
+  if (title.includes('[사설]') || title.includes('사설]') || title.includes('[사설') || title.startsWith('사설 ')) return true;
   return true;
 }
 
@@ -1328,6 +1336,21 @@ app.get(['/api/classics', '/classics'], (req, res) => {
   
   res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate');
   res.json(cachedClassics || fallbackClassicsData);
+});
+
+app.post(['/api/classics/refresh', '/classics/refresh'], async (req, res) => {
+  if (isFetchingClassics) {
+    return res.status(429).json({ error: '이미 새로운 고전을 불러오는 중입니다.' });
+  }
+  try {
+    cachedClassics = null;
+    lastClassicsDate = '';
+    await fetchClassicsBackground();
+    res.json(cachedClassics || fallbackClassicsData);
+  } catch (error: any) {
+    console.error('Manual classics refresh error:', error);
+    res.status(500).json({ error: '고전 추천 생성에 실패했습니다.' });
+  }
 });
 
 // Pre-fetch items on application start to avoid slow initial requests

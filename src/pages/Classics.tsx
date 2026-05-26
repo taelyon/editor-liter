@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { RotateCw, Loader2 } from 'lucide-react';
 
 interface Classic {
   id: number;
@@ -16,23 +17,48 @@ export default function Classics() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [classics, setClassics] = useState<Classic[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchClassics = async () => {
+    try {
+      const res = await fetch('/api/classics');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setClassics(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch classics:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchClassics = async () => {
-      try {
-        const res = await fetch('/api/classics');
+    fetchClassics();
+  }, []);
+
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      const res = await fetch('/api/classics/refresh', {
+        method: 'POST',
+      });
+      if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
           setClassics(data);
+          setExpandedId(null);
         }
-      } catch (error) {
-        console.error('Failed to fetch classics:', error);
-      } finally {
-        setIsLoading(false);
+      } else {
+        console.error('Failed to refresh classics:', res.statusText);
       }
-    };
-    fetchClassics();
-  }, []);
+    } catch (error) {
+      console.error('Failed to refresh classics:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const filteredClassics = filter === '전체' 
     ? classics 
@@ -45,6 +71,24 @@ export default function Classics() {
           <h1 className="text-3xl font-serif font-bold tracking-tight text-[#1A1A1A]">오늘의 고전</h1>
           <p className="text-base text-gray-500 mt-1">인공지능이 매일 새롭게 큐레이션하는 지혜</p>
         </div>
+        <button
+          onClick={handleRefresh}
+          disabled={isLoading || isRefreshing}
+          className="flex items-center gap-2 px-3.5 py-2 border border-[#EAE4DD] hover:border-[#A67C52] text-[#1A1A1A] rounded-xl font-medium text-sm transition-all duration-200 cursor-pointer bg-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md active:scale-95"
+          id="btn-refresh-classics"
+        >
+          {isRefreshing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-[#A67C52]" />
+              <span className="text-sm font-semibold">새 고전 조율 중</span>
+            </>
+          ) : (
+            <>
+              <RotateCw className="w-4 h-4 text-[#A67C52]" />
+              <span className="text-sm font-semibold">다른 고전 추천받기</span>
+            </>
+          )}
+        </button>
       </header>
 
       <div className="flex gap-4 mb-6">
