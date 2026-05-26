@@ -1278,13 +1278,18 @@ async function fetchClassicsBackground() {
       const text = response.text;
       if (text) {
           const cleanText = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-          const data = JSON.parse(cleanText);
-          if (Array.isArray(data) && data.length > 0) {
-              let id = 1;
-              const dataWithIds = data.map(item => ({ ...item, id: id++ }));
-              cachedClassics = dataWithIds;
-              lastClassicsDate = today;
-              saveClassicsToCache(today, cachedClassics);
+          try {
+              const data = JSON.parse(cleanText);
+              if (Array.isArray(data) && data.length > 0) {
+                  let id = 1;
+                  const dataWithIds = data.map(item => ({ ...item, id: id++ }));
+                  cachedClassics = dataWithIds;
+                  lastClassicsDate = today;
+                  saveClassicsToCache(today, cachedClassics);
+              }
+          } catch(e: any) {
+              console.error('JSON parse error in Classics:', e);
+              console.error('Raw text was:', text);
           }
       }
     } else {
