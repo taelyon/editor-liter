@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import DOMPurify from 'dompurify';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
-import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Editorial {
   id: string;
@@ -171,8 +171,6 @@ export default function Editorials() {
     setArticleDetail(null);
   };
 
-  const dragControls = useDragControls();
-
   return (
     <>
       <div className="pb-24 pt-6 px-4 max-w-2xl lg:max-w-4xl mx-auto min-h-screen relative">
@@ -280,24 +278,6 @@ export default function Editorials() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0.5 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200, mass: 0.8 }}
-            drag="x"
-            dragListener={false}
-            dragControls={dragControls}
-            dragDirectionLock={true}
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={{ left: 0, right: 1 }}
-            onDragEnd={(e, { offset, velocity }) => {
-              if (offset.x > 80 || velocity.x > 500) {
-                closeArticle();
-              }
-            }}
-            onPointerDown={(e) => {
-              // Trigger drag only if touch starts near the left edge
-              // This mimics iOS back-swipe and leaves the rest for text selection
-              if (e.clientX < 30) {
-                dragControls.start(e);
-              }
-            }}
             style={{ overscrollBehaviorX: 'none' }}
             className="fixed inset-0 z-50 bg-[#FCFAF7] overflow-y-auto w-full h-full pb-24 touch-pan-y"
           >

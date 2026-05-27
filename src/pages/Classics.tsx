@@ -74,19 +74,14 @@ export default function Classics() {
         <button
           onClick={handleRefresh}
           disabled={isLoading || isRefreshing}
-          className="flex items-center gap-2 px-3.5 py-2 border border-[#EAE4DD] hover:border-[#A67C52] text-[#1A1A1A] rounded-xl font-medium text-sm transition-all duration-200 cursor-pointer bg-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md active:scale-95"
+          className="flex items-center justify-center p-2.5 border border-[#EAE4DD] hover:border-[#A67C52] text-[#1A1A1A] rounded-xl transition-all duration-200 cursor-pointer bg-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md active:scale-95"
           id="btn-refresh-classics"
+          title="다른 고전 추천받기"
         >
           {isRefreshing ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin text-[#A67C52]" />
-              <span className="text-sm font-semibold">새 고전 조율 중</span>
-            </>
+            <Loader2 className="w-5 h-5 animate-spin text-[#A67C52]" />
           ) : (
-            <>
-              <RotateCw className="w-4 h-4 text-[#A67C52]" />
-              <span className="text-sm font-semibold">다른 고전 추천받기</span>
-            </>
+            <RotateCw className="w-5 h-5 text-[#A67C52]" />
           )}
         </button>
       </header>
