@@ -3,6 +3,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import apiApp from './api/index.js'; // Use .js extension for TS node resolution if required, or let tsx handle it
+import recommendationsRouter from './api/recommendations.js';
 
 async function startServer() {
   const app = express();
@@ -10,6 +11,7 @@ async function startServer() {
 
   // Mount API Routes from separate app
   app.use(apiApp);
+  app.use('/api/recommendations', recommendationsRouter);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {

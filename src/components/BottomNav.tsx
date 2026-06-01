@@ -1,4 +1,4 @@
-import { BookOpen, Newspaper, Bell } from 'lucide-react';
+import { BookOpen, Newspaper, Bell, Film, BookText } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -6,6 +6,8 @@ export default function BottomNav() {
   const navItems = [
     { name: '사설', path: '/', icon: Newspaper },
     { name: '고전', path: '/classics', icon: BookOpen },
+    { name: '영화', path: '/movies', icon: Film },
+    { name: '도서', path: '/books', icon: BookText },
     { name: '구독', path: '/settings', icon: Bell },
   ];
 

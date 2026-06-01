@@ -11,6 +11,8 @@ import BottomNav from './components/BottomNav';
 import Editorials from './pages/Editorials';
 import Classics from './pages/Classics';
 import Settings from './pages/Settings';
+import Movies from './pages/Movies';
+import Books from './pages/Books';
 
 export default function App() {
   useEffect(() => {
@@ -23,6 +25,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Editorials />} />
           <Route path="/classics" element={<Classics />} />
+          <Route path="/movies" element={<Movies />} />
+          <Route path="/books" element={<Books />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
         <BottomNav />
