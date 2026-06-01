@@ -1,6 +1,17 @@
 import 'dotenv/config';
 import express from 'express';
 import fs from 'fs';
+import { createClient } from '@vercel/kv';
+
+function getRedisClient() {
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) {
+    return createClient({ url, token });
+  }
+  return null;
+}
+
 
 // Force override stale system env if it's still MY_GEMINI_API_KEY or empty
 if (process.env.GEMINI_API_KEY === 'MY_GEMINI_API_KEY' || !process.env.GEMINI_API_KEY) {
@@ -1219,8 +1230,19 @@ let cachedClassics: any = null;
 let lastClassicsDate: string = '';
 let isFetchingClassics = false;
 
-function saveClassicsToCache(today: string, data: any) {
+async function saveClassicsToCache(today: string, data: any) {
   const cacheObj = { lastClassicsDate: today, data };
+  const redis = getRedisClient();
+  if (redis) {
+    try {
+      await redis.set('classics_cache', cacheObj);
+      console.log('Classics cache successfully saved to Redis.');
+      return;
+    } catch (err: any) {
+      console.warn('Failed to save classics cache to Redis:', err.message);
+    }
+  }
+
   const cacheStr = JSON.stringify(cacheObj, null, 2);
   
   // 1. Try local project directory for persistent environment (Synology NAS, Docker etc.)
@@ -1241,7 +1263,22 @@ function saveClassicsToCache(today: string, data: any) {
   }
 }
 
-function loadClassicsFromCache() {
+async function loadClassicsFromCache() {
+  const redis = getRedisClient();
+  if (redis) {
+    try {
+      const parsed = await redis.get<any>('classics_cache');
+      if (parsed && typeof parsed.lastClassicsDate === 'string' && Array.isArray(parsed.data)) {
+        cachedClassics = parsed.data;
+        lastClassicsDate = parsed.lastClassicsDate;
+        console.log(`Classics cache successfully loaded from Redis (Cached Date: ${lastClassicsDate})`);
+        return true;
+      }
+    } catch (err: any) {
+      console.warn('Failed to load classics cache from Redis:', err.message);
+    }
+  }
+
   const candidates = [
     path.join(process.cwd(), 'classics-cache.json'),
     '/tmp/classics-cache.json'
@@ -1274,7 +1311,7 @@ async function fetchClassicsBackground(force: boolean = false) {
     
     // First try loading from file cache
     if (!force && !cachedClassics) {
-      loadClassicsFromCache();
+      await loadClassicsFromCache();
     }
     
     if (!force && cachedClassics && lastClassicsDate === today) return;
@@ -1309,7 +1346,7 @@ async function fetchClassicsBackground(force: boolean = false) {
                   const dataWithIds = data.map(item => ({ ...item, id: id++ }));
                   cachedClassics = dataWithIds;
                   lastClassicsDate = today;
-                  saveClassicsToCache(today, cachedClassics);
+                  await saveClassicsToCache(today, cachedClassics);
               }
           } catch(e: any) {
               console.error('JSON parse error in Classics:', e);
@@ -1330,7 +1367,7 @@ async function fetchClassicsBackground(force: boolean = false) {
     // Attempt block infinite retries if API fails
     const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });
     if (!cachedClassics) {
-      if (loadClassicsFromCache()) {
+      if (await loadClassicsFromCache()) {
         console.log('Restored prior cache due to API fetch failure.');
       } else {
         cachedClassics = fallbackClassicsData;
