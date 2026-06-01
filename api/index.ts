@@ -81,6 +81,10 @@ const fallbackClassicsData = [
 
 const app = express();
 
+import recommendationsRouter from './recommendations.js';
+app.use('/api/recommendations', recommendationsRouter);
+app.use('/recommendations', recommendationsRouter);
+
 const parser = new Parser({
   customFields: {
     item: ['media:content', 'description', 'source']
