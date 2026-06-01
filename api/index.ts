@@ -81,7 +81,7 @@ const fallbackClassicsData = [
 
 const app = express();
 
-import recommendationsRouter from './recommendations.js';
+import recommendationsRouter from './_recommendations.js';
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/recommendations', recommendationsRouter);
 
@@ -1321,7 +1321,11 @@ async function fetchClassicsBackground(force: boolean = false) {
     }
   } catch (error: any) {
     const errorMsg = error.message || String(error);
-    console.error('Core Classics Fetch Error caught inside async:', errorMsg);
+    if (error?.status === 400 || errorMsg.includes('API key')) {
+      console.warn('API key issue for Classics generation, using fallback');
+    } else {
+      console.error('Core Classics Fetch Error caught inside async:', errorMsg);
+    }
     
     // Attempt block infinite retries if API fails
     const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });

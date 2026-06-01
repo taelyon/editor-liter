@@ -1,7 +1,15 @@
 import { Router } from 'express';
 import { GoogleGenAI, Type } from '@google/genai';
-import fs from 'fs';
-import path from 'path';
+import { createClient } from '@vercel/kv';
+
+function getRedisClient() {
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) {
+    return createClient({ url, token });
+  }
+  return null;
+}
 
 const router = Router();
 function getAiClient() {
@@ -15,7 +23,6 @@ function getAiClient() {
   });
 }
 
-const CACHE_FILE = path.join(process.cwd(), 'recommendations-cache.json');
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface CacheData {
@@ -109,29 +116,33 @@ const fallbackBooks = [
   }
 ];
 
-function getCacheData(): CacheData {
+async function getCacheData(): Promise<CacheData> {
   try {
-    if (fs.existsSync(CACHE_FILE)) {
-      const content = fs.readFileSync(CACHE_FILE, 'utf-8');
-      return JSON.parse(content);
+    const redis = getRedisClient();
+    if (redis) {
+      const data = await redis.get<CacheData>('recommendations_cache');
+      return data || {};
     }
   } catch (e) {
-    console.error('Error reading cache:', e);
+    console.error('Error reading cache from Redis:', e);
   }
   return {};
 }
 
-function saveCacheData(data: CacheData) {
+async function saveCacheData(data: CacheData) {
   try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(data, null, 2));
+    const redis = getRedisClient();
+    if (redis) {
+      await redis.set('recommendations_cache', data);
+    }
   } catch (e) {
-    console.error('Error writing cache:', e);
+    console.error('Error writing cache to Redis:', e);
   }
 }
 
 router.get('/movies', async (req, res) => {
   try {
-    const cache = getCacheData();
+    const cache = await getCacheData();
     const now = Date.now();
     if (cache.movies && cache.movies.data && (now - cache.movies.timestamp < ONE_WEEK_MS)) {
       return res.json(cache.movies.data);
@@ -175,7 +186,7 @@ router.get('/movies', async (req, res) => {
 
     if (newMovies.length > 0) {
       cache.movies = { timestamp: now, data: newMovies };
-      saveCacheData(cache);
+      await saveCacheData(cache);
       return res.json(newMovies);
     } else {
       console.error('Failed to generate recommendations, using fallback');
@@ -193,7 +204,7 @@ router.get('/movies', async (req, res) => {
 
 router.post('/movies/refresh', async (req, res) => {
   try {
-    const cache = getCacheData();
+    const cache = await getCacheData();
     const now = Date.now();
     
     const ai = getAiClient();
@@ -235,7 +246,7 @@ router.post('/movies/refresh', async (req, res) => {
 
     if (newMovies.length > 0) {
       cache.movies = { timestamp: now, data: newMovies };
-      saveCacheData(cache);
+      await saveCacheData(cache);
       return res.json(newMovies);
     } else {
       console.error('Failed to generate recommendations, using fallback');
@@ -253,7 +264,7 @@ router.post('/movies/refresh', async (req, res) => {
 
 router.get('/books', async (req, res) => {
   try {
-    const cache = getCacheData();
+    const cache = await getCacheData();
     const now = Date.now();
     if (cache.books && cache.books.data && (now - cache.books.timestamp < ONE_WEEK_MS)) {
       return res.json(cache.books.data);
@@ -297,7 +308,7 @@ router.get('/books', async (req, res) => {
 
     if (newBooks.length > 0) {
       cache.books = { timestamp: now, data: newBooks };
-      saveCacheData(cache);
+      await saveCacheData(cache);
       return res.json(newBooks);
     } else {
       console.error('Failed to generate recommendations, using fallback');
@@ -315,7 +326,7 @@ router.get('/books', async (req, res) => {
 
 router.post('/books/refresh', async (req, res) => {
   try {
-    const cache = getCacheData();
+    const cache = await getCacheData();
     const now = Date.now();
 
     const ai = getAiClient();
@@ -356,7 +367,7 @@ router.post('/books/refresh', async (req, res) => {
 
     if (newBooks.length > 0) {
       cache.books = { timestamp: now, data: newBooks };
-      saveCacheData(cache);
+      await saveCacheData(cache);
       return res.json(newBooks);
     } else {
       console.error('Failed to generate recommendations, using fallback');

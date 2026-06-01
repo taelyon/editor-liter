@@ -3,7 +3,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import apiApp from './api/index.js'; // Use .js extension for TS node resolution if required, or let tsx handle it
-import recommendationsRouter from './api/recommendations.js';
+import recommendationsRouter from './api/_recommendations.js';
 
 async function startServer() {
   const app = express();
