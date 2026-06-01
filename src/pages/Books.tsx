@@ -99,7 +99,7 @@ export default function Books() {
                 <span className="font-bold text-[#A67C52]">{book.genre}</span>
               </div>
               <div className="h-px bg-[#EAE4DD] w-full mb-4"></div>
-              <p className="text-base leading-relaxed text-gray-600 break-keep">
+              <p className="text-base leading-relaxed text-gray-600 break-keep whitespace-pre-line">
                 {book.description}
               </p>
             </div>

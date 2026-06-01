@@ -278,7 +278,7 @@ router.get('/books', async (req, res) => {
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
-      contents: "추천 도서 5권을 추천해줘. 단순한 베스트셀러보다, 인류의 지성과 감성을 일깨운 영원한 고전이나 문학적 성취가 뛰어난 마스터피스 도서 위주로 선정해줘. JSON 배열 형태로 제목(title), 저자(author), 장르(genre), 상세하고 깊이 있는 설명(description), 출판년도(year)를 포함해줘.",
+      contents: "추천 도서 5권을 추천해줘. 단순한 베스트셀러보다, 인류의 지성과 감성을 일깨운 영원한 고전이나 문학적 성취가 뛰어난 마스터피스 도서 위주로 선정해줘. JSON 배열 형태로 제목(title), 저자(author), 장르(genre), 이 작품이 왜 역사적/문학적으로 중요한지, 독자에게 어떤 통찰을 주는지를 포함한 매우 상세하고 깊이 있는 설명(description), 출판년도(year)를 포함해줘.",
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -337,7 +337,7 @@ router.post('/books/refresh', async (req, res) => {
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
-      contents: "추천 도서 5권을 추천해줘. 단순한 베스트셀러보다, 인류의 지성과 감성을 일깨운 영원한 고전이나 문학적 성취가 뛰어난 마스터피스 도서 위주로 선정해줘. 이전에 추천했던 것과 다른 도서들을 포함해줘. JSON 배열 형태로 제목(title), 저자(author), 장르(genre), 상세하고 깊이 있는 설명(description), 출판년도(year)를 포함해줘.",
+      contents: "추천 도서 5권을 추천해줘. 단순한 베스트셀러보다, 인류의 지성과 감성을 일깨운 영원한 고전이나 문학적 성취가 뛰어난 마스터피스 도서 위주로 선정해줘. 이전에 추천했던 것과 다른 도서들을 포함해줘. JSON 배열 형태로 제목(title), 저자(author), 장르(genre), 이 작품이 왜 역사적/문학적으로 중요한지, 독자에게 어떤 통찰을 주는지를 포함한 매우 상세하고 깊이 있는 설명(description), 출판년도(year)를 포함해줘.",
       config: {
         responseMimeType: "application/json",
         responseSchema: {

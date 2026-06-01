@@ -19,7 +19,7 @@ export default function BottomNav() {
             <NavLink
               to={item.path}
               className={({ isActive }) => cn(
-                "flex flex-col items-center p-2 transition-colors",
+                "flex flex-col items-center pt-2 pb-4 px-2 transition-colors",
                 isActive ? "text-[#4A90E2]" : "text-gray-400 hover:text-[#1A1A1A]"
               )}
             >

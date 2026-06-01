@@ -99,7 +99,7 @@ export default function Movies() {
                 <span className="font-bold text-[#4A90E2]">{movie.genre}</span>
               </div>
               <div className="h-px bg-[#EAE4DD] w-full mb-4"></div>
-              <p className="text-base leading-relaxed text-gray-600 break-keep">
+              <p className="text-base leading-relaxed text-gray-600 break-keep whitespace-pre-line">
                 {movie.description}
               </p>
             </div>
