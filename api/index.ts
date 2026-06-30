@@ -1079,13 +1079,15 @@ async function fetchEditorialsBackground() {
     const now = new Date();
     
     const excludedSources = ['daum.net', 'v.daum.net', 'nate.com', 'msn.com', 'zum.com'];
+    const spamKeywords = ['마케팅대행', '광고대행', '오픈채팅방', '인원수작업', '바둑이', '홍보대행', '상위등록', '계정판매', '구글상위', '백링크', '카지노', '토토'];
     
     allItems = allItems.filter(item => {
       const source = (item.publisher || '').toLowerCase();
       const isExcludedLink = excludedSources.some(excluded => item.link.includes(excluded));
+      const isSpam = spamKeywords.some(keyword => item.title.includes(keyword));
       const pubDate = new Date(item.pubDate || '');
       const isRecent = now.getTime() - pubDate.getTime() <= 96 * 60 * 60 * 1000;
-      return !isExcludedLink && isRecent && item.mediaType === 'central';
+      return !isExcludedLink && !isSpam && isRecent && item.mediaType === 'central';
     });
 
     allItems.sort((a, b) => {
