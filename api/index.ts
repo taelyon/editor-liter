@@ -584,6 +584,20 @@ app.get(['/api/article', '/article'], async (req, res) => {
       });
     }
 
+    if (article && (
+      article.title?.includes('Attention Required!') || 
+      article.title?.includes('Cloudflare') || 
+      (article.textContent && article.textContent.includes('Cloudflare Ray ID')) ||
+      (article.textContent && article.textContent.includes('Triggered the security solution')) ||
+      html.includes('Cloudflare')
+    )) {
+      return res.status(403).json({
+        error: '해당 사이트의 보안 설정으로 인해 원문을 직접 불러올 수 없습니다.',
+        details: 'Cloudflare security block detected.',
+        snippet: ''
+      });
+    }
+
     if (!article) {
       console.error('Final parse failure for:', targetUrl);
       
@@ -1084,7 +1098,7 @@ async function fetchEditorialsBackground() {
     allItems = allItems.filter(item => {
       const source = (item.publisher || '').toLowerCase();
       const isExcludedLink = excludedSources.some(excluded => item.link.includes(excluded));
-      const isSpam = spamKeywords.some(keyword => item.title.includes(keyword));
+      const isSpam = spamKeywords.some(keyword => item.title.includes(keyword)) || /사설 뉴스 \d+ 페이지/.test(item.title);
       const pubDate = new Date(item.pubDate || '');
       const isRecent = now.getTime() - pubDate.getTime() <= 96 * 60 * 60 * 1000;
       return !isExcludedLink && !isSpam && isRecent && item.mediaType === 'central';
