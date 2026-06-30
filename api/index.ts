@@ -171,12 +171,23 @@ app.get(['/api/article', '/article'], async (req, res) => {
 
     console.log('Fetching target URL:', targetUrl);
 
+    const fetchHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Cache-Control': 'max-age=0',
+      'Sec-Ch-Ua': '"Not/A)Brand";v="99", "Google Chrome";v="115", "Chromium";v="115"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"macOS"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1'
+    };
+
     let response = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
-      },
+      headers: fetchHeaders,
       redirect: 'follow',
       signal: AbortSignal.timeout(4000)
     });
@@ -195,18 +206,14 @@ app.get(['/api/article', '/article'], async (req, res) => {
         console.log('Following meta-refresh to:', nextUrl);
         targetUrl = nextUrl;
         response = await fetch(targetUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          },
+          headers: fetchHeaders,
           signal: AbortSignal.timeout(4000)
         });
       } else {
         // If we already called text() but found no redirect, we have a problem because we need arrayBuffer for iconv-lite
         // Re-fetch to get a fresh stream if we aren't following a redirect
         response = await fetch(targetUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          },
+          headers: fetchHeaders,
           signal: AbortSignal.timeout(4000)
         });
       }
@@ -1122,7 +1129,20 @@ async function fetchEditorialsBackground() {
         await Promise.allSettled(itemsToFix.map(async (item) => {
             try {
                 const res = await fetch(item.link, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+                      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                      'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+                      'Cache-Control': 'max-age=0',
+                      'Sec-Ch-Ua': '"Not/A)Brand";v="99", "Google Chrome";v="115", "Chromium";v="115"',
+                      'Sec-Ch-Ua-Mobile': '?0',
+                      'Sec-Ch-Ua-Platform': '"macOS"',
+                      'Sec-Fetch-Dest': 'document',
+                      'Sec-Fetch-Mode': 'navigate',
+                      'Sec-Fetch-Site': 'none',
+                      'Sec-Fetch-User': '?1',
+                      'Upgrade-Insecure-Requests': '1'
+                    },
                     signal: AbortSignal.timeout(3000)
                 });
                 const text = await res.text();
